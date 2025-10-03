@@ -59,9 +59,21 @@ class Scanner:
             self.gui_queue.put(message)
 
     def start(self):
-        """Starts the scanning process in a separate thread."""
+        """
+        Performs a health check and starts the scanning process in a separate thread if healthy.
+        """
         if self.running:
             logger.warning("Scanner is already running.")
+            return
+
+        # --- Pre-run Health Check ---
+        logger.info("Performing API health check before starting...")
+        self._send_to_gui("LOG:INFO:Validating API token...")
+        if not self.api.check_api_health():
+            error_msg = "API token is invalid. Please update it in your .env file and restart."
+            logger.critical(error_msg)
+            self._send_to_gui(f"LOG:CRITICAL:{error_msg}")
+            # Do not start the scanner if the token is bad
             return
 
         self.running = True

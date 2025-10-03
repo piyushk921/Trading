@@ -11,6 +11,7 @@ from .config import SECRETS, get_api_config, get_symbol_id_map
 # --- Constants ---
 DHAN_API_URL = "https://api.dhan.co"
 OPTION_CHAIN_ENDPOINT = "/v2/optionchain"
+PROFILE_ENDPOINT = "/v1/profile" # A simple endpoint for health checks
 
 # --- API Client Setup ---
 
@@ -60,6 +61,28 @@ class DhanAPI:
             retries=api_config.get("max_retries", 3),
             backoff_factor=api_config.get("backoff_factor", 0.5),
         )
+
+    def check_api_health(self) -> bool:
+        """
+        Performs a simple API call to check if the access token is valid.
+        Returns True if the token is valid, False otherwise.
+        """
+        url = f"{DHAN_API_URL}{PROFILE_ENDPOINT}"
+        try:
+            # Use a short timeout and no retries for this simple check
+            response = requests.get(url, headers=self.headers, timeout=5)
+            if response.status_code == 200:
+                logger.success("Dhan API token is valid.")
+                return True
+            elif response.status_code == 401:
+                logger.critical("Dhan API token is INVALID (Unauthorized). Please generate a new one.")
+                return False
+            else:
+                logger.error(f"Received unexpected status code {response.status_code} during API health check.")
+                return False
+        except requests.RequestException as e:
+            logger.error(f"API health check failed due to a network error: {e}")
+            return False
 
     def get_option_chain(self, symbol: str):
         """
