@@ -57,8 +57,18 @@ def get_secrets():
     # Load .env file from the project root if it exists.
     # This is useful for local development.
     dotenv_path = BASE_DIR / ".env"
+
+    # --- DIAGNOSTIC CODE ---
+    # Print the exact path to help the user debug .env issues.
+    print(f"[DIAGNOSTIC] Searching for .env file at this exact path: {dotenv_path.resolve()}")
+    logger.info(f"Searching for .env file at: {dotenv_path.resolve()}")
+    # --- END DIAGNOSTIC CODE ---
+
     if dotenv_path.exists():
+        logger.info(".env file found. Loading credentials from it.")
         load_dotenv(dotenv_path=dotenv_path)
+    else:
+        logger.warning(".env file not found. Will rely on system environment variables.")
 
     required_secrets = [
         "DHAN_CLIENT_ID",
