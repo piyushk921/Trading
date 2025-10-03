@@ -1,0 +1,41 @@
+# dhan_scanner/config/config.yaml
+
+# Core scanner settings
+scanner:
+  scan_interval_minutes: 5
+  strikes_to_check: 2  # ATM +/- this many strikes
+  concurrency: 4       # Number of parallel requests to Dhan API
+
+# Signal logic
+signal:
+  oi_change_percent_threshold: 30.0
+  use_percent_change: true # If false, use absolute OI change (not implemented by default)
+
+# Liquidity filters
+liquidity:
+  # Exclude strikes where (ask - bid) / ((ask + bid) / 2) > max_spread_percentage
+  max_spread_percentage: 15.0
+  min_option_volume: 100
+  min_open_interest: 1000
+
+# Strike selection rules (defaults)
+strike_selection:
+  # For indices like NIFTY, BANKNIFTY
+  index_step: 50
+  # For individual stocks based on LTP
+  stock_steps:
+    - { max_ltp: 100, step: 1 }
+    - { max_ltp: 500, step: 5 }
+    - { max_ltp: 100000, step: 10 } # A large number for "everything else"
+
+# API robustness
+api:
+  max_retries: 3
+  backoff_factor: 0.5 # In seconds
+
+# Logging configuration
+logging:
+  log_file: "dhan_scanner/logs/scanner.log"
+  max_file_size_mb: 10
+  backup_count: 7
+  level: "INFO"
