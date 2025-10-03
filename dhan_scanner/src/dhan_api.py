@@ -85,7 +85,13 @@ class DhanAPI:
         }
 
         try:
-            response = self.session.get(url, headers=self.headers, params=params, timeout=10)
+            # Changed from GET to POST as the API expects a POST request for this endpoint.
+            # The payload is sent as JSON instead of URL parameters.
+            payload = {
+                "securityId": security_id,
+                "expiry": "MONTHLY"
+            }
+            response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
             response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
 
             data = response.json()

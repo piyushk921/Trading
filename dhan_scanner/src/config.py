@@ -54,21 +54,27 @@ def get_secrets():
     Raises:
         ValueError: If any of the required environment variables are not set.
     """
-    # Load .env file from the project root if it exists.
-    # This is useful for local development.
-    dotenv_path = BASE_DIR / ".env"
+    # --- Robust .env file loading ---
+    # Checks for both `.env` and `.env.txt` to handle common Windows file naming issues.
+    path_exact = BASE_DIR / ".env"
+    path_with_txt = BASE_DIR / ".env.txt"
 
-    # --- DIAGNOSTIC CODE ---
-    # Print the exact path to help the user debug .env issues.
-    print(f"[DIAGNOSTIC] Searching for .env file at this exact path: {dotenv_path.resolve()}")
-    logger.info(f"Searching for .env file at: {dotenv_path.resolve()}")
-    # --- END DIAGNOSTIC CODE ---
+    dotenv_path_to_load = None
 
-    if dotenv_path.exists():
-        logger.info(".env file found. Loading credentials from it.")
-        load_dotenv(dotenv_path=dotenv_path)
+    if path_exact.exists():
+        logger.info(f"Found credentials file at: {path_exact}")
+        dotenv_path_to_load = path_exact
+    elif path_with_txt.exists():
+        logger.warning(f"Found credentials file at '{path_with_txt}'.")
+        logger.warning("This is likely because the file was saved as a text file.")
+        logger.warning("For best practice, please rename it to just '.env'.")
+        dotenv_path_to_load = path_with_txt
     else:
-        logger.warning(".env file not found. Will rely on system environment variables.")
+        logger.warning(f"No .env file found at '{path_exact}' or '{path_with_txt}'.")
+        logger.warning("The application will rely on system environment variables.")
+
+    if dotenv_path_to_load:
+        load_dotenv(dotenv_path=dotenv_path_to_load)
 
     required_secrets = [
         "DHAN_CLIENT_ID",
