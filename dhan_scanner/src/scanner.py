@@ -245,45 +245,99 @@ class Scanner:
             return 999.99 if current_oi > 0 else 0.0 # Handle division by zero
         return ((current_oi - prev_oi) / prev_oi) * 100
 
-    def _check_for_signal(self, symbol, ltp, strike, ce_change, pe_change):
-        """Applies the signal logic and notifies if a signal is found."""
-        threshold = self.signal_config.get("oi_change_percent_threshold", 30.0)
-        signal_found = None
+    def _check_for_signals(self, symbol, ltp, strike, ce_change, pe_change):
+        """
+        Applies all signal logic, including tiered unwinding and buildup signals.
+        """
+        # We process unwinding and buildup signals separately.
+        self._check_unwinding_signals(symbol, ltp, strike, ce_change, pe_change)
+        self._check_buildup_signals(symbol, ltp, strike, ce_change, pe_change)
 
-        if ce_change <= -threshold and pe_change > 0:
-            signal_found = "LONG"
-        elif pe_change <= -threshold and ce_change > 0:
-            signal_found = "SHORT"
+    def _check_unwinding_signals(self, symbol, ltp, strike, ce_change, pe_change):
+        """Checks for Long/Short signals based on tiered unwinding thresholds."""
+        thresholds = self.signal_config.get("unwinding_thresholds", [30])
 
-        if signal_found:
-            log_message = (f"Signal: {signal_found} {symbol} @ {ltp} | Strike: {strike} | "
-                           f"CE ΔOI: {ce_change:.2f}%, PE ΔOI: {pe_change:.2f}%")
-            # Use a different log level for signals to make them stand out
-            logger.success(log_message)
-            self._send_to_gui(f"LOG:SUCCESS:{log_message}")
+        for threshold in thresholds:
+            # Long Candidate: Call OI unwinding, Put OI increasing
+            if ce_change <= -threshold and pe_change > 0:
+                self._notify_signal(
+                    signal_type="Long Unwinding",
+                    threshold=threshold,
+                    symbol=symbol, ltp=ltp, strike=strike,
+                    ce_change=ce_change, pe_change=pe_change
+                )
+                return # Report only the highest threshold met
 
-            telegram_message = (
-                f"📈 *{signal_found} Signal Detected* 📉\n\n"
-                f"*Symbol:* `{symbol}`\n"
-                f"*LTP:* `{ltp}`\n"
-                f"*Trigger Strike:* `{strike}`\n\n"
-                f"*CE ΔOI:* `{ce_change:.2f}%`\n"
-                f"*PE ΔOI:* `{pe_change:.2f}%`"
-            )
-            self.notifier.send_notification(telegram_message)
+            # Short Candidate: Put OI unwinding, Call OI increasing
+            if pe_change <= -threshold and ce_change > 0:
+                self._notify_signal(
+                    signal_type="Short Unwinding",
+                    threshold=threshold,
+                    symbol=symbol, ltp=ltp, strike=strike,
+                    ce_change=ce_change, pe_change=pe_change
+                )
+                return # Report only the highest threshold met
 
-            # Send structured data to the GUI queue if it exists
-            if self.gui_queue:
-                gui_signal_data = {
-                    "type": "SIGNAL",
-                    "direction": signal_found,
-                    "symbol": symbol,
-                    "ltp": ltp,
-                    "strike": strike,
-                    "ce_change": ce_change,
-                    "pe_change": pe_change,
-                }
-                self.gui_queue.put(gui_signal_data)
+    def _check_buildup_signals(self, symbol, ltp, strike, ce_change, pe_change):
+        """Checks for OI Buildup signals based on tiered thresholds."""
+        thresholds = self.signal_config.get("buildup_thresholds", [30])
+
+        # Check CE buildup independently
+        for threshold in thresholds:
+            if ce_change >= threshold:
+                self._notify_signal(
+                    signal_type="CE Buildup",
+                    threshold=threshold,
+                    symbol=symbol, ltp=ltp, strike=strike,
+                    ce_change=ce_change, pe_change=pe_change
+                )
+                break # Found highest CE buildup, move to check PE
+
+        # Check PE buildup independently
+        for threshold in thresholds:
+            if pe_change >= threshold:
+                self._notify_signal(
+                    signal_type="PE Buildup",
+                    threshold=threshold,
+                    symbol=symbol, ltp=ltp, strike=strike,
+                    ce_change=ce_change, pe_change=pe_change
+                )
+                break # Found highest PE buildup
+
+    def _notify_signal(self, **kwargs):
+        """Consolidated method to log, send Telegram, and send GUI notifications."""
+        signal_type = kwargs['signal_type']
+        threshold = kwargs['threshold']
+        symbol = kwargs['symbol']
+
+        # Log to file/console
+        log_message = (
+            f"Signal: {signal_type} >{threshold}% | {symbol} @ {kwargs['ltp']} | "
+            f"Strike: {kwargs['strike']} | CE ΔOI: {kwargs['ce_change']:.2f}%, PE ΔOI: {kwargs['pe_change']:.2f}%"
+        )
+        logger.success(log_message)
+        self._send_to_gui(f"LOG:SUCCESS:{log_message}")
+
+        # Send Telegram notification
+        telegram_message = (
+            f"📈 *{signal_type} (> {threshold}%)*\n\n"
+            f"*Symbol:* `{symbol}`\n"
+            f"*LTP:* `{kwargs['ltp']}`\n"
+            f"*Trigger Strike:* `{kwargs['strike']}`\n\n"
+            f"*CE ΔOI:* `{kwargs['ce_change']:.2f}%`\n"
+            f"*PE ΔOI:* `{kwargs['pe_change']:.2f}%`"
+        )
+        self.notifier.send_notification(telegram_message)
+
+        # Send structured data to the GUI queue
+        if self.gui_queue:
+            gui_signal_data = {
+                "type": "SIGNAL",
+                "signal_type": signal_type,
+                "threshold": threshold,
+                **kwargs
+            }
+            self.gui_queue.put(gui_signal_data)
 
 
 if __name__ == "__main__":

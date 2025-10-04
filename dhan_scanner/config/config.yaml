@@ -8,8 +8,13 @@ scanner:
 
 # Signal logic
 signal:
-  oi_change_percent_threshold: 30.0
-  use_percent_change: true # If false, use absolute OI change (not implemented by default)
+  # Tiered thresholds for OI Unwinding (Long/Short signals).
+  # The scanner will check for signals at each of these percentage points.
+  # The list should be in descending order.
+  unwinding_thresholds: [30, 20, 10]
+
+  # Tiered thresholds for the new OI Buildup signals.
+  buildup_thresholds: [30, 20, 10]
 
 # Liquidity filters
 liquidity:
@@ -22,11 +27,14 @@ liquidity:
 strike_selection:
   # For indices like NIFTY, BANKNIFTY
   index_step: 50
-  # For individual stocks based on LTP
+  # For individual stocks based on LTP. More steps added for high-value stocks.
   stock_steps:
     - { max_ltp: 100, step: 1 }
     - { max_ltp: 500, step: 5 }
-    - { max_ltp: 100000, step: 10 } # A large number for "everything else"
+    - { max_ltp: 1000, step: 10 }
+    - { max_ltp: 2500, step: 25 }
+    - { max_ltp: 5000, step: 50 }
+    - { max_ltp: 100000, step: 100 } # A large number for "everything else"
 
 # API robustness
 api:
