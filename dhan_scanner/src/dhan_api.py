@@ -97,15 +97,26 @@ class DhanAPI:
             return None
 
         url = f"{DHAN_API_URL}{EXPIRY_LIST_ENDPOINT}"
-        payload = {
+        params = {
             "UnderlyingScrip": int(security_id_str),
             "UnderlyingSeg": segment,
         }
 
         try:
-            response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
+            response = self.session.get(url, headers=self.headers, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
+
+            # Gracefully handle symbols with no option contracts
+            if response.status_code == 200 and data.get("status") == "failure":
+                if "no contracts found" in data.get("remarks", "").lower():
+                    logger.info(f"No option contracts found for {symbol}. Skipping.")
+                else:
+                    logger.warning(
+                        f"API request for {symbol} failed with remarks: {data.get('remarks')}"
+                    )
+                return None
+
             if data.get("status", "failure") == "success":
                 expiry_dates = data.get("data", {}).get("ExpiryDateList", [])
                 logger.debug(f"Found {len(expiry_dates)} expiry dates for {symbol}: {expiry_dates}")
@@ -113,8 +124,18 @@ class DhanAPI:
             else:
                 logger.error(f"API returned failure when fetching expiry list for {symbol}: {data.get('remarks')}")
                 return None
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 400:
+                 logger.warning(
+                    f"Bad request for expiry list for {symbol} ({security_id_str}). "
+                    f"This may mean the symbol does not have options. "
+                    f"Response: {e.response.text}"
+                )
+            else:
+                logger.error(f"HTTP error fetching expiry list for {symbol}: {e}")
+            return None
         except Exception as e:
-            logger.exception(f"An error occurred while fetching expiry list for {symbol}: {e}")
+            logger.exception(f"An unexpected error occurred while fetching expiry list for {symbol}: {e}")
             return None
 
     def get_option_chain(self, symbol: str):
@@ -123,40 +144,40 @@ class DhanAPI:
         1. Fetch the list of valid expiry dates.
         2. Use the nearest expiry date to fetch the option chain.
         """
-        # Step 1: Get the list of valid expiry dates
         expiry_dates = self.get_expiry_list(symbol)
         if not expiry_dates:
-            logger.warning(f"Could not retrieve expiry dates for {symbol}. Cannot fetch option chain.")
+            # The reason for failure is already logged in get_expiry_list
             return None
 
-        # Use the first expiry in the list, which is the nearest one.
         nearest_expiry = expiry_dates[0]
         logger.info(f"Using nearest expiry '{nearest_expiry}' for {symbol}.")
 
-        # Step 2: Fetch the option chain using the valid expiry date
         security_id_str = self.symbol_id_map.get(symbol)
         segment = self.symbol_segment_map.get(symbol)
 
         url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
-        payload = {
+        params = {
             "UnderlyingScrip": int(security_id_str),
             "UnderlyingSeg": segment,
             "Expiry": nearest_expiry
         }
 
         try:
-            logger.debug(f"Requesting Option Chain for {symbol} with payload: {payload}")
-            response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
+            logger.debug(f"Requesting Option Chain for {symbol} with params: {params}")
+            response = self.session.get(url, headers=self.headers, params=params, timeout=10)
             response.raise_for_status()
 
             data = response.json()
             if data.get("status", "failure") == "success":
-                return data.get("data") # Return the actual data payload
+                return data.get("data")
             else:
                 logger.error(f"API returned failure when fetching option chain for {symbol}: {data.get('remarks')}")
                 return None
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error fetching option chain for {symbol}: {e}")
+            return None
         except Exception as e:
-            logger.exception(f"An error occurred while fetching option chain for {symbol}: {e}")
+            logger.exception(f"An unexpected error occurred while fetching option chain for {symbol}: {e}")
             return None
 
 if __name__ == "__main__":

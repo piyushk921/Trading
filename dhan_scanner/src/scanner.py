@@ -213,7 +213,7 @@ class Scanner:
             pe_oi_change_pct = self._calculate_oi_change(current_pe_oi, previous_oi["pe_oi"])
 
             # Check for signals
-            self._check_for_signal(
+            self._check_for_signals(
                 symbol, ltp, strike_price, ce_oi_change_pct, pe_oi_change_pct
             )
 

@@ -1,0 +1,28 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment variables
+.env
+.env.*
+
+# Log files
+*.log
+logs/
+
+# Temporary data files
+*.csv
+*.json
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Distribution / build artifacts
+/dist/
+/build/
+*.egg-info/
