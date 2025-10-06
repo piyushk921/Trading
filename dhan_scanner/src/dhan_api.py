@@ -12,6 +12,7 @@ from .utils import get_monthly_expiry_date
 # --- Constants ---
 DHAN_API_URL = "https://api.dhan.co"
 OPTION_CHAIN_ENDPOINT = "/v2/optionchain"
+EXPIRY_LIST_ENDPOINT = "/v2/optionchain/expirylist"
 FUND_LIMIT_ENDPOINT = "/v2/fundlimit" # Corrected endpoint for health checks
 
 # --- API Client Setup ---
@@ -86,56 +87,77 @@ class DhanAPI:
             logger.error(f"API health check failed due to a network error: {e}")
             return False
 
-    def get_option_chain(self, symbol: str):
-        """
-        Fetches the full option chain for a given symbol.
-
-        Args:
-            symbol (str): The trading symbol (e.g., "NIFTY", "RELIANCE").
-
-        Returns:
-            dict: The API response as a dictionary, or None if the request fails
-                  or the symbol is not found in the security ID map.
-        """
+    def get_expiry_list(self, symbol: str) -> list[str] | None:
+        """Fetches the list of valid expiry dates for a given underlying symbol."""
         security_id_str = self.symbol_id_map.get(symbol)
         segment = self.symbol_segment_map.get(symbol)
 
         if not security_id_str or not segment:
-            logger.warning(f"Security ID or Segment not found for symbol '{symbol}'. Skipping.")
+            logger.warning(f"Security ID or Segment not found for symbol '{symbol}' in get_expiry_list. Skipping.")
             return None
 
-        url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
-
-        expiry_date = get_monthly_expiry_date()
+        url = f"{DHAN_API_URL}{EXPIRY_LIST_ENDPOINT}"
+        payload = {
+            "UnderlyingScrip": int(security_id_str),
+            "UnderlyingSeg": segment,
+        }
 
         try:
-            # Construct the payload according to the official Dhan API documentation
-            payload = {
-                "UnderlyingScrip": int(security_id_str), # Must be an integer
-                "UnderlyingSeg": segment,
-                "Expiry": expiry_date
-            }
+            response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("status", "failure") == "success":
+                expiry_dates = data.get("data", {}).get("ExpiryDateList", [])
+                logger.debug(f"Found {len(expiry_dates)} expiry dates for {symbol}: {expiry_dates}")
+                return expiry_dates
+            else:
+                logger.error(f"API returned failure when fetching expiry list for {symbol}: {data.get('remarks')}")
+                return None
+        except Exception as e:
+            logger.exception(f"An error occurred while fetching expiry list for {symbol}: {e}")
+            return None
+
+    def get_option_chain(self, symbol: str):
+        """
+        Fetches the full option chain for a given symbol using a two-step process:
+        1. Fetch the list of valid expiry dates.
+        2. Use the nearest expiry date to fetch the option chain.
+        """
+        # Step 1: Get the list of valid expiry dates
+        expiry_dates = self.get_expiry_list(symbol)
+        if not expiry_dates:
+            logger.warning(f"Could not retrieve expiry dates for {symbol}. Cannot fetch option chain.")
+            return None
+
+        # Use the first expiry in the list, which is the nearest one.
+        nearest_expiry = expiry_dates[0]
+        logger.info(f"Using nearest expiry '{nearest_expiry}' for {symbol}.")
+
+        # Step 2: Fetch the option chain using the valid expiry date
+        security_id_str = self.symbol_id_map.get(symbol)
+        segment = self.symbol_segment_map.get(symbol)
+
+        url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
+        payload = {
+            "UnderlyingScrip": int(security_id_str),
+            "UnderlyingSeg": segment,
+            "Expiry": nearest_expiry
+        }
+
+        try:
             logger.debug(f"Requesting Option Chain for {symbol} with payload: {payload}")
             response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
-            response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
+            response.raise_for_status()
 
             data = response.json()
-            if data.get("status") == "failure":
-                logger.error(f"Dhan API returned failure for {symbol}: {data.get('remarks')}")
+            if data.get("status", "failure") == "success":
+                return data.get("data") # Return the actual data payload
+            else:
+                logger.error(f"API returned failure when fetching option chain for {symbol}: {data.get('remarks')}")
                 return None
-
-            return data
-
-        except requests.exceptions.HTTPError as errh:
-            logger.error(f"HTTP Error for {symbol}: {errh}")
-        except requests.exceptions.ConnectionError as errc:
-            logger.error(f"Connection Error for {symbol}: {errc}")
-        except requests.exceptions.Timeout as errt:
-            logger.error(f"Timeout Error for {symbol}: {errt}")
-        except requests.exceptions.RequestException as err:
-            logger.error(f"An unexpected request error occurred for {symbol}: {err}")
-
-        return None
+        except Exception as e:
+            logger.exception(f"An error occurred while fetching option chain for {symbol}: {e}")
+            return None
 
 if __name__ == "__main__":
     # A simple test to verify the API call works.
