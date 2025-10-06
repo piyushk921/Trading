@@ -10,7 +10,8 @@ from .utils import get_correct_expiry_date
 
 # --- Constants ---
 DHAN_API_URL = "https://api.dhan.co"
-OPTION_CHAIN_ENDPOINT = "/v2/optionchain/chain"
+# Corrected endpoint with the hyphen as per the official documentation
+OPTION_CHAIN_ENDPOINT = "/v2/option-chain/chain"
 FUND_LIMIT_ENDPOINT = "/v2/fundlimit"
 
 # --- API Client Setup ---
@@ -70,7 +71,6 @@ class DhanAPI:
         """
         Fetches the full option chain for a given symbol using a determined expiry date.
         """
-        # Determine the correct expiry date based on the user's rules.
         expiry_date = get_correct_expiry_date(symbol)
         logger.info(f"Using calculated expiry '{expiry_date}' for {symbol}.")
 
