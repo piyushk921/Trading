@@ -8,7 +8,7 @@ from loguru import logger
 from .dhan_api import DhanAPI
 from .config import (
     get_scanner_config, get_signal_config, get_liquidity_config,
-    get_universe_symbols
+    get_universe_symbols, get_strike_selection_config
 )
 from .utils import (
     choose_strike_step, calculate_atm_strike, get_strikes_to_check,
@@ -19,8 +19,12 @@ from .notifier import TelegramNotifier
 # In-memory cache to store the previous scan's OI data.
 # Format: {symbol: {strike_price: {"ce_oi": val, "pe_oi": val}}}
 PREVIOUS_SCAN_OI = {}
-# A lock to ensure thread-safe access to the shared OI cache
 CACHE_LOCK = threading.Lock()
+
+# New cache to store the strikes determined at the start of the session.
+# This ensures the strikes are static throughout the day.
+STATIC_STRIKES_CACHE = {}
+STRIKES_CACHE_LOCK = threading.Lock()
 
 class Scanner:
     """

@@ -1,7 +1,13 @@
 # dhan_scanner/test_option_chain.py
+import sys
+import os
 
-from .src.dhan_api import DhanAPI
-from .src.logger_config import setup_logging
+# Add the project root to the path to allow direct execution of this test script.
+# This ensures that `from src...` imports work correctly.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from src.dhan_api import DhanAPI
+from src.logger_config import setup_logging
 from loguru import logger
 import os
 

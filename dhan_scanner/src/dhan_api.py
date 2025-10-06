@@ -75,23 +75,31 @@ class DhanAPI:
         expiry_date = get_correct_expiry_date(symbol)
         logger.info(f"Using calculated expiry '{expiry_date}' for {symbol}.")
 
-        security_id_str = self.symbol_id_map.get(symbol)
+        security_id_val = self.symbol_id_map.get(symbol)
 
-        if not security_id_str:
+        if not security_id_val:
             logger.warning(f"Security ID not found for symbol '{symbol}'. Skipping.")
             return None
 
+        # Convert security ID to integer as required by the API
+        try:
+            security_id = int(security_id_val)
+        except (ValueError, TypeError):
+            logger.error(f"Invalid Security ID format for {symbol}: '{security_id_val}'. Must be an integer.")
+            return None
+
         url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
-        # Corrected payload keys as per the user's finding in the documentation.
-        payload = {
-            "securityId": security_id_str,
-            "exchangeSegment": NSE_FNO_SEGMENT, # Using the correct, unified segment
+        # Parameters for the GET request
+        params = {
+            "securityId": security_id,
+            "exchangeSegment": NSE_FNO_SEGMENT,
             "expiryDate": expiry_date
         }
 
         try:
-            logger.debug(f"Requesting Option Chain for {symbol} with payload: {payload}")
-            response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
+            logger.debug(f"Requesting Option Chain for {symbol} with params: {params}")
+            # The v2/optionchain endpoint uses a GET request with query parameters
+            response = self.session.get(url, headers=self.headers, params=params, timeout=10)
             response.raise_for_status()
 
             data = response.json()
