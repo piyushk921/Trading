@@ -11,7 +11,7 @@ from .config import SECRETS, get_api_config, get_symbol_id_map
 # --- Constants ---
 DHAN_API_URL = "https://api.dhan.co"
 OPTION_CHAIN_ENDPOINT = "/v2/optionchain"
-FUND_LIMIT_ENDPOINT = "/v1/fundlimit" # A simple, reliable endpoint for health checks
+FUND_LIMIT_ENDPOINT = "/v2/fundlimit" # Corrected endpoint for health checks
 
 # --- API Client Setup ---
 
