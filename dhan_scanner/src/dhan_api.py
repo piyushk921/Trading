@@ -96,22 +96,30 @@ class DhanAPI:
             dict: The API response as a dictionary, or None if the request fails
                   or the symbol is not found in the security ID map.
         """
-        security_id = self.symbol_id_map.get(symbol)
-        if not security_id:
+        security_id_str = self.symbol_id_map.get(symbol)
+        if not security_id_str:
             logger.warning(f"Security ID not found for symbol '{symbol}'. Skipping.")
             return None
 
         url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
 
-        # Calculate the correct monthly expiry date
+        # Determine the segment based on the symbol type (Index vs. Stock)
+        # This is a simple heuristic; a more robust solution might map this from the master file.
+        if "NIFTY" in symbol.upper():
+            segment = "IDX_I"
+        else:
+            segment = "EQ_I"
+
         expiry_date = get_monthly_expiry_date()
 
         try:
-            # The payload now uses the correct key 'expiryDate' and the dynamic date.
+            # Construct the payload according to the official Dhan API documentation
             payload = {
-                "securityId": security_id,
-                "expiryDate": expiry_date
+                "UnderlyingScrip": int(security_id_str), # Must be an integer
+                "UnderlyingSeg": segment,
+                "Expiry": expiry_date
             }
+            logger.debug(f"Requesting Option Chain for {symbol} with payload: {payload}")
             response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
             response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
 
