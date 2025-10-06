@@ -67,7 +67,7 @@ def get_correct_expiry_date(symbol: str) -> str:
     Determines the correct expiry date string based on the symbol, following user rules.
     - NIFTY: Weekly expiry (nearest upcoming Tuesday).
     - All others: Monthly expiry (last Tuesday of the current month).
-    Returns the date in DD-MM-YYYY format as required by the API.
+    Returns the date in YYYY-MM-DD format as required by the API.
     """
     today = datetime.now().date()
 
@@ -83,4 +83,4 @@ def get_correct_expiry_date(symbol: str) -> str:
             next_year = today.year + today.month // 12
             expiry_date = get_last_tuesday_of_month(next_year, next_month)
 
-    return expiry_date.strftime("%d-%m-%Y")
+    return expiry_date.strftime("%Y-%m-%d")
