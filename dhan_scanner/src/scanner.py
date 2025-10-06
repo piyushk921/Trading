@@ -169,14 +169,23 @@ class Scanner:
         target_strikes = get_strikes_to_check(atm_strike, strike_step, num_strikes_around)
 
         # 3. Map target strikes to available strikes from API response
-        available_strikes = [d['strikePrice'] for d in option_chain_data["optionChainDetails"]]
-        strikes_to_process = {} # {actual_strike: strike_data_dict}
+        # The new API response nests the strike data in a dictionary where keys are strike prices.
+        option_chain_details = option_chain_data.get("optionChainDetails", {}) # This is the 'oc' dict
+        if not option_chain_details:
+            logger.warning(f"No optionChainDetails ('oc' key) in data for {symbol}.")
+            return None
+
+        available_strike_keys = list(option_chain_details.keys())
+        available_strikes_float = [float(s) for s in available_strike_keys]
+
+        strikes_to_process = {} # {float_strike: strike_data_dict}
         for target in target_strikes:
-            closest_strike = find_closest_available_strike(target, available_strikes)
-            if closest_strike:
-                for strike_data in option_chain_data["optionChainDetails"]:
-                    if strike_data['strikePrice'] == closest_strike:
-                        strikes_to_process[closest_strike] = strike_data
+            closest_strike_float = find_closest_available_strike(target, available_strikes_float)
+            if closest_strike_float:
+                # Find the original string key that corresponds to the float value
+                for strike_key in available_strike_keys:
+                    if float(strike_key) == closest_strike_float:
+                        strikes_to_process[closest_strike_float] = option_chain_details[strike_key]
                         break
 
         if not strikes_to_process:
@@ -186,15 +195,17 @@ class Scanner:
         # 4. Process each strike for signals and update cache
         new_oi_data_for_symbol = {}
         for strike_price, strike_data in strikes_to_process.items():
-            ce_details = strike_data.get('callOptionDetails', {})
-            pe_details = strike_data.get('putOptionDetails', {})
+            # The v2 API uses 'ce' and 'pe' keys
+            ce_details = strike_data.get('ce', {})
+            pe_details = strike_data.get('pe', {})
 
             if not self._is_liquid(ce_details, pe_details):
                 logger.debug(f"Skipping illiquid strike {strike_price} for {symbol}")
                 continue
 
-            current_ce_oi = ce_details.get('openInterest', 0)
-            current_pe_oi = pe_details.get('openInterest', 0)
+            # The v2 API uses 'oi' for open interest
+            current_ce_oi = ce_details.get('oi', 0)
+            current_pe_oi = pe_details.get('oi', 0)
 
             new_oi_data_for_symbol[strike_price] = {
                 "ce_oi": current_ce_oi,

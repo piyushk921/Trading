@@ -10,8 +10,9 @@ from loguru import logger
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- Embedded Symbol Maps ---
-# This map is now embedded directly into the code to prevent file-not-found errors
-# and make the application more robust and self-contained.
+# These maps are now embedded directly into the code to prevent file-not-found errors.
+# This makes the application more robust and self-contained.
+
 SYMBOL_TO_ID_MAP = {
     "011NSETEST": "1", "021NSETEST": "2", "031NSETEST": "3", "041NSETEST": "4", "051NSETEST": "5",
     "061NSETEST": "6", "071NSETEST": "7", "081NSETEST": "8", "091NSETEST": "9", "101NSETEST": "10",
@@ -67,6 +68,65 @@ SYMBOL_TO_ID_MAP = {
     "ULTRACEMCO": "3103", "UNIONBANK": "3116", "UNITDSPR": "1845", "UNOMINDA": "3134",
     "UPL": "3140", "VBL": "2120", "VEDL": "2650", "VOLTAS": "3193", "WIPRO": "3238",
     "YESBANK": "3277", "ZEEL": "3307", "ZOMATO": "4739", "ZYDUSLIFE": "432"
+}
+
+SYMBOL_TO_SEGMENT_MAP = {
+    "011NSETEST": "EQ_I", "021NSETEST": "EQ_I", "031NSETEST": "EQ_I", "041NSETEST": "EQ_I",
+    "051NSETEST": "EQ_I", "061NSETEST": "EQ_I", "071NSETEST": "EQ_I", "081NSETEST": "EQ_I",
+    "091NSETEST": "EQ_I", "101NSETEST": "EQ_I", "111NSETEST": "EQ_I", "121NSETEST": "EQ_I",
+    "131NSETEST": "EQ_I", "141NSETEST": "EQ_I", "151NSETEST": "EQ_I", "161NSETEST": "EQ_I",
+    "171NSETEST": "EQ_I", "181NSETEST": "EQ_I", "360ONE": "EQ_I", "ABB": "EQ_I", "ABCAPITAL": "EQ_I",
+    "ADANIENSOL": "EQ_I", "ADANIENT": "EQ_I", "ADANIGREEN": "EQ_I", "ADANIPORTS": "EQ_I",
+    "ALKEM": "EQ_I", "AMBER": "EQ_I", "AMBUJACEM": "EQ_I", "ANGELONE": "EQ_I", "APLAPOLLO": "EQ_I",
+    "APOLLOHOSP": "EQ_I", "ASHOKLEY": "EQ_I", "ASIANPAINT": "EQ_I", "ASTRAL": "EQ_I", "AUBANK": "EQ_I",
+    "AUROPHARMA": "EQ_I", "AXISBANK": "EQ_I", "BAJAJ-AUTO": "EQ_I", "BAJAJFINSV": "EQ_I",
+    "BAJFINANCE": "EQ_I", "BALKRISIND": "EQ_I", "BALRAMCHIN": "EQ_I", "BANDHANBNK": "EQ_I",
+    "BANKBARODA": "EQ_I", "BANKINDIA": "EQ_I", "BANKNIFTY": "IDX_I", "BATAINDIA": "EQ_I",
+    "BDL": "EQ_I", "BEL": "EQ_I", "BERGEPAINT": "EQ_I", "BHARATFORG": "EQ_I", "BHARTIARTL": "EQ_I",
+    "BHEL": "EQ_I", "BIOCON": "EQ_I", "BLUESTARCO": "EQ_I", "BOSCHLTD": "EQ_I", "BPCL": "EQ_I",
+    "BRITANNIA": "EQ_I", "BSE": "EQ_I", "BSOFT": "EQ_I", "CAMS": "EQ_I", "CANBK": "EQ_I",
+    "CANFINHOME": "EQ_I", "CDSL": "EQ_I", "CENTURYTEX": "EQ_I", "CGPOWER": "EQ_I",
+    "CHAMBLFERT": "EQ_I", "CHOLAFIN": "EQ_I", "CIPLA": "EQ_I", "COALINDIA": "EQ_I",
+    "COFORGE": "EQ_I", "COLPAL": "EQ_I", "CONCOR": "EQ_I", "COROMANDEL": "EQ_I", "CROMPTON": "EQ_I",
+    "CUB": "EQ_I", "CUMMINSIND": "EQ_I", "CYIENT": "EQ_I", "DABUR": "EQ_I", "DALBHARAT": "EQ_I",
+    "DEEPAKNTR": "EQ_I", "DELHIVERY": "EQ_I", "DELTAcorp": "EQ_I", "DIVISLAB": "EQ_I",
+    "DIXON": "EQ_I", "DLF": "EQ_I", "DMART": "EQ_I", "DRREDDY": "EQ_I", "EICHERMOT": "EQ_I",
+    "ESCORTS": "EQ_I", "ETERNAL": "EQ_I", "EXIDEIND": "EQ_I", "FEDERALBNK": "EQ_I",
+    "FINNIFTY": "IDX_I", "FORTIS": "EQ_I", "GAIL": "EQ_I", "GLENMARK": "EQ_I", "GMRINFRA": "EQ_I",
+    "GNFC": "EQ_I", "GODREJCP": "EQ_I", "GODREJPROP": "EQ_I", "GRANULES": "EQ_I", "GRASIM": "EQ_I",
+    "GUJGASLTD": "EQ_I", "HAL": "EQ_I", "HAVELLS": "EQ_I", "HCLTECH": "EQ_I", "HDFCAMC": "EQ_I",
+    "HDFCBANK": "EQ_I", "HDFCLIFE": "EQ_I", "HEROMOTOCO": "EQ_I", "HFCL": "EQ_I", "HINDALCO": "EQ_I",
+    "HINDCOPPER": "EQ_I", "HINDPETRO": "EQ_I", "HINDUNILVR": "EQ_I", "HINDZINC": "EQ_I",
+    "HUDCO": "EQ_I", "ICICIBANK": "EQ_I", "ICICIGI": "EQ_I", "ICICIPRULI": "EQ_I", "IDEA": "EQ_I",
+    "IDFC": "EQ_I", "IDFCFIRSTB": "EQ_I", "IEX": "EQ_I", "IGL": "EQ_I", "IIFL": "EQ_I",
+    "INDHOTEL": "EQ_I", "INDIACEM": "EQ_I", "INDIANB": "EQ_I", "INDIGO": "EQ_I", "INDUSINDBK": "EQ_I",
+    "INDUSTOWER": "EQ_I", "INFY": "EQ_I", "INOXWIND": "EQ_I", "IOC": "EQ_I", "IPCALAB": "EQ_I",
+    "IRCTC": "EQ_I", "IREDA": "EQ_I", "IRFC": "EQ_I", "ITC": "EQ_I", "JINDALSTEL": "EQ_I",
+    "JIOFIN": "EQ_I", "JKCEMENT": "EQ_I", "JSWENERGY": "EQ_I", "JSWSTEEL": "EQ_I", "JUBLFOOD": "EQ_I",
+    "KALYANKJIL": "EQ_I", "KAYNES": "EQ_I", "KEI": "EQ_I", "KFINTECH": "EQ_I", "KOTAKBANK": "EQ_I",
+    "KPITTECH": "EQ_I", "LAURUSLABS": "EQ_I", "LICHSGFIN": "EQ_I", "LICI": "EQ_I", "LODHA": "EQ_I",
+    "LT": "EQ_I", "LTF": "EQ_I", "LTIM": "EQ_I", "LUPIN": "EQ_I", "M&M": "EQ_I", "M&MFIN": "EQ_I",
+    "MANAPPURAM": "EQ_I", "MANKIND": "EQ_I", "MARICO": "EQ_I", "MARUTI": "EQ_I", "MAXHEALTH": "EQ_I",
+    "MAZDOCK": "EQ_I", "MCX": "EQ_I", "METROPOLIS": "EQ_I", "MFSL": "EQ_I", "MIDCPNIFTY": "IDX_I",
+    "MOTHERSON": "EQ_I", "MPHASIS": "EQ_I", "MRF": "EQ_I", "MUTHOOTFIN": "EQ_I",
+    "NATIONALUM": "EQ_I", "NAUKRI": "EQ_I", "NAVINFLUOR": "EQ_I", "NBCC": "EQ_I", "NCC": "EQ_I",
+    "NESTLEIND": "EQ_I", "NHPC": "EQ_I", "NIFTY": "IDX_I", "NIFTYNXT50": "IDX_I", "NMDC": "EQ_I",
+    "NTPC": "EQ_I", "NUVAMA": "EQ_I", "NYKAA": "EQ_I", "OBEROIRLTY": "EQ_I", "OFSS": "EQ_I",
+    "OIL": "EQ_I", "ONGC": "EQ_I", "PAGEIND": "EQ_I", "PATANJALI": "EQ_I", "PAYTM": "EQ_I",
+    "PEL": "EQ_I", "PERSISTENT": "EQ_I", "PETRONET": "EQ_I", "PFC": "EQ_I", "PGEL": "EQ_I",
+    "PHOENIXLTD": "EQ_I", "PIDILITIND": "EQ_I", "PIIND": "EQ_I", "PNB": "EQ_I", "PNBHOUSING": "EQ_I",
+    "POLICYBZR": "EQ_I", "POLYCAB": "EQ_I", "POWERGRID": "EQ_I", "POWERINDIA": "EQ_I",
+    "PPLPHARMA": "EQ_I", "PRESTIGE": "EQ_I", "RBLBANK": "EQ_I", "RECLTD": "EQ_I", "RELIANCE": "EQ_I",
+    "RVNL": "EQ_I", "SAIL": "EQ_I", "SAMMAANCAP": "EQ_I", "SBICARD": "EQ_I", "SBILIFE": "EQ_I",
+    "SBIN": "EQ_I", "SHREECEM": "EQ_I", "SHRIRAMFIN": "EQ_I", "SIEMENS": "EQ_I", "SOLARINDS": "EQ_I",
+    "SONACOMS": "EQ_I", "SRF": "EQ_I", "SUNPHARMA": "EQ_I", "SUNTV": "EQ_I", "SUPREMEIND": "EQ_I",
+    "SUZLON": "EQ_I", "SYNGENE": "EQ_I", "TATACONSUM": "EQ_I", "TATAELXSI": "EQ_I",
+    "TATAMOTORS": "EQ_I", "TATAPOWER": "EQ_I", "TATASTEEL": "EQ_I", "TATATECH": "EQ_I",
+    "TCS": "EQ_I", "TECHM": "EQ_I", "TIINDIA": "EQ_I", "TITAGARH": "EQ_I", "TITAN": "EQ_I",
+    "TORNTPHARM": "EQ_I", "TORNTPOWER": "EQ_I", "TRENT": "EQ_I", "TVSMOTOR": "EQ_I",
+    "ULTRACEMCO": "EQ_I", "UNIONBANK": "EQ_I", "UNITDSPR": "EQ_I", "UNOMINDA": "EQ_I",
+    "UPL": "EQ_I", "VBL": "EQ_I", "VEDL": "EQ_I", "VOLTAS": "EQ_I", "WIPRO": "EQ_I",
+    "YESBANK": "EQ_I", "ZEEL": "EQ_I", "ZOMATO": "EQ_I", "ZYDUSLIFE": "EQ_I"
 }
 
 # --- Configuration Loading ---
@@ -155,3 +215,7 @@ def get_universe_symbols():
 def get_symbol_id_map():
     """Returns the embedded symbol-to-ID map."""
     return SYMBOL_TO_ID_MAP
+
+def get_symbol_segment_map():
+    """Returns the embedded symbol-to-segment map."""
+    return SYMBOL_TO_SEGMENT_MAP

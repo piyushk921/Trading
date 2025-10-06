@@ -1,171 +1,88 @@
 # src/utils.py
 
-import calendar
-from datetime import date, timedelta
-from .config import get_strike_selection_config
+from datetime import datetime, timedelta
+from calendar import monthrange
 
-def get_monthly_expiry_date() -> str:
+# --- Strike Calculation Utilities ---
+
+def choose_strike_step(symbol, ltp, strike_config):
     """
-    Calculates the date of the last Tuesday of the current month.
-
-    Returns:
-        str: The expiry date in "YYYY-MM-DD" format.
+    Determines the appropriate strike step based on the symbol type and LTP.
     """
-    today = date.today()
-    year, month = today.year, today.month
+    if symbol in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
+        return strike_config.get("index_step", 50)
 
-    # Get a matrix of the month's calendar
-    month_cal = calendar.monthcalendar(year, month)
+    stock_steps = strike_config.get("stock_steps", [])
+    for rule in stock_steps:
+        if ltp < rule["max_ltp"]:
+            return rule["step"]
+    # Default to a larger step if LTP is very high
+    return 100
 
-    # The last Tuesday must be in the last or second-to-last week
-    last_week = month_cal[-1]
-    second_last_week = month_cal[-2]
-
-    # calendar.TUESDAY is 1
-    if last_week[calendar.TUESDAY] != 0:
-        # Last Tuesday is in the last week of the month
-        day = last_week[calendar.TUESDAY]
-    else:
-        # Last Tuesday is in the second-to-last week
-        day = second_last_week[calendar.TUESDAY]
-
-    return date(year, month, day).strftime("%Y-%m-%d")
-
-def choose_strike_step(symbol: str, ltp: float) -> int:
-    """
-    Determines the appropriate strike step for a given symbol and its LTP.
-
-    Args:
-        symbol (str): The trading symbol (e.g., "NIFTY", "RELIANCE").
-        ltp (float): The Last Traded Price of the underlying security.
-
-    Returns:
-        int: The calculated strike step (e.g., 50, 100 for indices; 1, 5, 10 for stocks).
-    """
-    config = get_strike_selection_config()
-
-    # Check for index symbols first
-    if "NIFTY" in symbol.upper(): # A simple check for NIFTY and BANKNIFTY
-        return config.get("index_step", 50)
-
-    # Apply rules for stock options based on LTP
-    stock_steps = config.get("stock_steps", [])
-    for rule in sorted(stock_steps, key=lambda x: x['max_ltp']):
-        if ltp < rule['max_ltp']:
-            return rule['step']
-
-    # Fallback to a default step if no rule matches (e.g., for very high priced stocks)
-    # The last rule in a well-formed config should have a very high max_ltp, making this rare.
-    return stock_steps[-1]['step'] if stock_steps else 10
-
-def calculate_atm_strike(ltp: float, strike_step: int) -> int:
-    """
-    Calculates the At-The-Money (ATM) strike by rounding the LTP to the nearest
-    multiple of the strike step.
-
-    Args:
-        ltp (float): The Last Traded Price.
-        strike_step (int): The distance between consecutive strike prices.
-
-    Returns:
-        int: The calculated ATM strike price.
-    """
+def calculate_atm_strike(ltp, strike_step):
+    """Calculates the At-The-Money (ATM) strike by rounding to the nearest step."""
     return round(ltp / strike_step) * strike_step
 
-def get_strikes_to_check(atm_strike: int, strike_step: int, num_strikes_around: int) -> list[int]:
+def get_strikes_to_check(atm_strike, strike_step, num_strikes_around):
     """
-    Generates a list of strikes to check, centered around the ATM strike.
-
-    Args:
-        atm_strike (int): The At-The-Money strike price.
-        strike_step (int): The step between strikes.
-        num_strikes_around (int): The number of strikes to include on either side of ATM.
-                                  (e.g., 2 for ATM-2, ATM-1, ATM, ATM+1, ATM+2).
-
-    Returns:
-        list[int]: A sorted list of strike prices to be analyzed.
+    Generates a list of strikes to check around the ATM strike.
     """
     strikes = [atm_strike]
     for i in range(1, num_strikes_around + 1):
-        strikes.append(atm_strike - (i * strike_step))
         strikes.append(atm_strike + (i * strike_step))
-
+        strikes.append(atm_strike - (i * strike_step))
     return sorted(strikes)
 
-def find_closest_available_strike(target_strike: int, available_strikes: list[int]) -> int | None:
+def find_closest_available_strike(target_strike, available_strikes):
     """
-    Finds the closest available strike from the option chain data to a target strike.
-
-    This is necessary because the calculated theoretical strike (e.g., 21350) might
-    not be present in the API response if it's illiquid or for other reasons.
-
-    Args:
-        target_strike (int): The theoretically calculated strike price.
-        available_strikes (list[int]): A list of actual strike prices from the API.
-
-    Returns:
-        int | None: The closest strike price available, or None if the list is empty.
+    Finds the closest strike from a list of available strikes to a target strike.
     """
     if not available_strikes:
         return None
+    return min(available_strikes, key=lambda x: abs(x - target_strike))
 
-    # Find the strike with the minimum absolute difference from the target
-    closest_strike = min(available_strikes, key=lambda x: abs(x - target_strike))
-    return closest_strike
+# --- Expiry Date Calculation Utilities ---
 
-if __name__ == "__main__":
-    print("--- Testing Strike Utility Functions ---")
+def get_last_tuesday_of_month(year, month):
+    """Calculates the date of the last Tuesday of a given month and year."""
+    # Last day of the month (day_of_week: 0=Mon, 1=Tue, ..., 6=Sun)
+    last_day_of_month, num_days = monthrange(year, month)
+    last_date = datetime(year, month, num_days)
 
-    # Test case 1: Expiry Date
-    expiry = get_monthly_expiry_date()
-    print(f"\nCalculated Monthly Expiry Date: {expiry}")
-    # Manual verification needed, but this tests if the function runs.
+    # Calculate how many days to subtract to get to the last Tuesday
+    # 1 is the weekday for Tuesday
+    offset = (last_date.weekday() - 1) % 7
+    last_tuesday = last_date - timedelta(days=offset)
+    return last_tuesday
 
-    # Test case 2: NIFTY
-    nifty_ltp = 21342
-    nifty_step = choose_strike_step("NIFTY", nifty_ltp)
-    nifty_atm = calculate_atm_strike(nifty_ltp, nifty_step)
-    nifty_strikes = get_strikes_to_check(nifty_atm, nifty_step, 2)
-    print(f"\nNIFTY LTP: {nifty_ltp}")
-    print(f"  - Calculated Step: {nifty_step} (Expected: 50)")
-    print(f"  - Calculated ATM: {nifty_atm} (Expected: 21350)")
-    print(f"  - Strikes to Check: {nifty_strikes} (Expected: [21250, 21300, 21350, 21400, 21450])")
+def get_next_tuesday(from_date):
+    """Finds the date of the very next Tuesday from a given date."""
+    days_ahead = (1 - from_date.weekday() + 7) % 7
+    if days_ahead == 0: # If today is Tuesday, get next Tuesday
+        days_ahead = 7
+    return from_date + timedelta(days=days_ahead)
 
-    # Test case 2: Low-priced stock
-    stock1_ltp = 88.5
-    stock1_step = choose_strike_step("STOCKA", stock1_ltp)
-    stock1_atm = calculate_atm_strike(stock1_ltp, stock1_step)
-    stock1_strikes = get_strikes_to_check(stock1_atm, stock1_step, 2)
-    print(f"\nStock A LTP: {stock1_ltp}")
-    print(f"  - Calculated Step: {stock1_step} (Expected: 1)")
-    print(f"  - Calculated ATM: {stock1_atm} (Expected: 89)")
-    print(f"  - Strikes to Check: {stock1_strikes} (Expected: [87, 88, 89, 90, 91])")
+def get_correct_expiry_date(symbol: str) -> str:
+    """
+    Determines the correct expiry date string based on the symbol, following user rules.
+    - NIFTY: Weekly expiry (nearest upcoming Tuesday).
+    - All others: Monthly expiry (last Tuesday of the current month).
+    """
+    today = datetime.now().date()
 
-    # Test case 3: Mid-priced stock
-    stock2_ltp = 347.2
-    stock2_step = choose_strike_step("STOCKB", stock2_ltp)
-    stock2_atm = calculate_atm_strike(stock2_ltp, stock2_step)
-    stock2_strikes = get_strikes_to_check(stock2_atm, stock2_step, 2)
-    print(f"\nStock B LTP: {stock2_ltp}")
-    print(f"  - Calculated Step: {stock2_step} (Expected: 5)")
-    print(f"  - Calculated ATM: {stock2_atm} (Expected: 345)")
-    print(f"  - Strikes to Check: {stock2_strikes} (Expected: [335, 340, 345, 350, 355])")
+    if symbol == "NIFTY":
+        # Find the nearest upcoming Tuesday for weekly expiry
+        expiry_date = get_next_tuesday(today)
+    else:
+        # For all other stocks and indices, find the last Tuesday of the current month
+        expiry_date = get_last_tuesday_of_month(today.year, today.month)
+        # If the last Tuesday has already passed this month, get the last Tuesday of the next month
+        if today > expiry_date.date():
+            next_month = today.month + 1
+            next_year = today.year
+            if next_month > 12:
+                next_month = 1
+                next_year += 1
+            expiry_date = get_last_tuesday_of_month(next_year, next_month)
 
-    # Test case 4: High-priced stock
-    stock3_ltp = 1255
-    stock3_step = choose_strike_step("STOCKC", stock3_ltp)
-    stock3_atm = calculate_atm_strike(stock3_ltp, stock3_step)
-    stock3_strikes = get_strikes_to_check(stock3_atm, stock3_step, 2)
-    print(f"\nStock C LTP: {stock3_ltp}")
-    print(f"  - Calculated Step: {stock3_step} (Expected: 10)")
-    print(f"  - Calculated ATM: {stock3_atm} (Expected: 1260)")
-    print(f"  - Strikes to Check: {stock3_strikes} (Expected: [1240, 1250, 1260, 1270, 1280])")
-
-    # Test case 5: Finding closest strike
-    available = [21300, 21400, 21500]
-    target = 21342
-    closest = find_closest_available_strike(21350, available)
-    print(f"\nClosest strike to 21350 in {available} is: {closest} (Expected: 21400)")
-    available = [21300, 21350, 21400]
-    closest = find_closest_available_strike(21350, available)
-    print(f"Closest strike to 21350 in {available} is: {closest} (Expected: 21350)")
+    return expiry_date.strftime("%Y-%m-%d")
