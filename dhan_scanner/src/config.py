@@ -7,24 +7,132 @@ from dotenv import load_dotenv
 from loguru import logger
 
 # --- Constants ---
-# Define the base directory of the project.
-# Assumes this script is in `src/`, so `Path(__file__).parent.parent` is the project root.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# --- Embedded Symbol Maps ---
+# These maps are now embedded directly into the code to prevent file-not-found errors.
+# This makes the application more robust and self-contained.
+
+SYMBOL_TO_ID_MAP = {
+    "011NSETEST": "1", "021NSETEST": "2", "031NSETEST": "3", "041NSETEST": "4", "051NSETEST": "5",
+    "061NSETEST": "6", "071NSETEST": "7", "081NSETEST": "8", "091NSETEST": "9", "101NSETEST": "10",
+    "111NSETEST": "11", "121NSETEST": "12", "131NSETEST": "13", "141NSETEST": "14", "151NSETEST": "15",
+    "161NSETEST": "16", "171NSETEST": "17", "181NSETEST": "18", "360ONE": "403", "ABB": "13",
+    "ABCAPITAL": "523", "ADANIENSOL": "3504", "ADANIENT": "3506", "ADANIGREEN": "3861",
+    "ADANIPORTS": "3529", "ALKEM": "1719", "AMBER": "2601", "AMBUJACEM": "114", "ANGELONE": "4075",
+    "APLAPOLLO": "143", "APOLLOHOSP": "157", "ASHOKLEY": "202", "ASIANPAINT": "212", "ASTRAL": "226",
+    "AUBANK": "2323", "AUROPHARMA": "236", "AXISBANK": "242", "BAJAJ-AUTO": "275", "BAJAJFINSV": "281",
+    "BAJFINANCE": "278", "BALKRISIND": "291", "BALRAMCHIN": "297", "BANDHANBNK": "2623",
+    "BANKBARODA": "301", "BANKINDIA": "303", "BANKNIFTY": "26001", "BATAINDIA": "322", "BDL": "2787",
+    "BEL": "328", "BERGEPAINT": "341", "BHARATFORG": "358", "BHARTIARTL": "363", "BHEL": "367",
+    "BIOCON": "374", "BLUESTARCO": "395", "BOSCHLTD": "2181", "BPCL": "401", "BRITANNIA": "416",
+    "BSE": "443", "BSOFT": "383", "CAMS": "4225", "CANBK": "439", "CANFINHOME": "442", "CDSL": "2525",
+    "CENTURYTEX": "468", "CGPOWER": "1195", "CHAMBLFERT": "475", "CHOLAFIN": "504", "CIPLA": "526",
+    "COALINDIA": "4420", "COFORGE": "2374", "COLPAL": "544", "CONCOR": "558", "COROMANDEL": "572",
+    "CROMPTON": "586", "CUB": "600", "CUMMINSIND": "603", "CYIENT": "1410", "DABUR": "620",
+    "DALBHARAT": "628", "DEEPAKNTR": "651", "DELHIVERY": "4955", "DELTAcorp": "664", "DIVISLAB": "703",
+    "DIXON": "2553", "DLF": "694", "DMART": "2376", "DRREDDY": "727", "EICHERMOT": "772",
+    "ESCORTS": "804", "ETERNAL": "4889", "EXIDEIND": "822", "FEDERALBNK": "841", "FINNIFTY": "26011",
+    "FORTIS": "890", "GAIL": "918", "GLENMARK": "972", "GMRINFRA": "995", "GNFC": "1003",
+    "GODREJCP": "1008", "GODREJPROP": "4215", "GRANULES": "1032", "GRASIM": "1035",
+    "GUJGASLTD": "1801", "HAL": "2764", "HAVELLS": "1121", "HCLTECH": "1152", "HDFCAMC": "3015",
+    "HDFCBANK": "1154", "HDFCLIFE": "2552", "HEROMOTOCO": "1191", "HFCL": "1194", "HINDALCO": "1223",
+    "HINDCOPPER": "1226", "HINDPETRO": "1230", "HINDUNILVR": "1232", "HINDZINC": "1234",
+    "HUDCO": "2443", "ICICIBANK": "1284", "ICICIGI": "2573", "ICICIPRULI": "2179", "IDEA": "1298",
+    "IDFC": "1303", "IDFCFIRSTB": "3103", "IEX": "2538", "IGL": "1330", "IIFL": "4722",
+    "INDHOTEL": "1346", "INDIACEM": "1338", "INDIANB": "1343", "INDIGO": "1794", "INDUSINDBK": "1357",
+    "INDUSTOWER": "4273", "INFY": "1394", "INOXWIND": "1537", "IOC": "1403", "IPCALAB": "1406",
+    "IRCTC": "3787", "IREDA": "5865", "IRFC": "4450", "ITC": "1474", "JINDALSTEL": "1502",
+    "JIOFIN": "5793", "JKCEMENT": "1512", "JSWENERGY": "4318", "JSWSTEEL": "1529", "JUBLFOOD": "4390",
+    "KALYANKJIL": "4790", "KAYNES": "5325", "KEI": "1618", "KFINTECH": "5426", "KOTAKBANK": "1660",
+    "KPITTECH": "3412", "LAURUSLABS": "2115", "LICHSGFIN": "1765", "LICI": "5040", "LODHA": "4628",
+    "LT": "1736", "LTF": "4639", "LTIM": "5387", "LUPIN": "1778", "M&M": "1828", "M&MFIN": "1829",
+    "MANAPPURAM": "4416", "MANKIND": "5633", "MARICO": "1859", "MARUTI": "1869", "MAXHEALTH": "4261",
+    "MAZDOCK": "4233", "MCX": "2031", "METROPOLIS": "3426", "MFSL": "1834", "MIDCPNIFTY": "26037",
+    "MOTHERSON": "3326", "MPHASIS": "1850", "MRF": "1941", "MUTHOOTFIN": "4683", "NATIONALUM": "2007",
+    "NAUKRI": "4264", "NAVINFLUOR": "2013", "NBCC": "2055", "NCC": "2018", "NESTLEIND": "2032",
+    "NHPC": "4252", "NIFTY": "26000", "NIFTYNXT50": "26002", "NMDC": "2060", "NTPC": "2103",
+    "NUVAMA": "5885", "NYKAA": "4888", "OBEROIRLTY": "4569", "OFSS": "1429", "OIL": "2204",
+    "ONGC": "2214", "PAGEIND": "4204", "PATANJALI": "5123", "PAYTM": "4887", "PEL": "2333",
+    "PERSISTENT": "4208", "PETRONET": "2306", "PFC": "2312", "PGEL": "2661", "PHOENIXLTD": "2325",
+    "PIDILITIND": "2328", "PIIND": "4554", "PNB": "2374", "PNBHOUSING": "2123", "POLICYBZR": "4886",
+    "POLYCAB": "3439", "POWERGRID": "2351", "POWERINDIA": "3948", "PPLPHARMA": "5135",
+    "PRESTIGE": "4593", "RBLBANK": "2124", "RECLTD": "2430", "RELIANCE": "2475", "RVNL": "3481",
+    "SAIL": "2533", "SAMMAANCAP": "4514", "SBICARD": "3934", "SBILIFE": "2579", "SBIN": "2574",
+    "SHREECEM": "2667", "SHRIRAMFIN": "2674", "SIEMENS": "2694", "SOLARINDS": "2708",
+    "SONACOMS": "4729", "SRF": "2720", "SUNPHARMA": "2769", "SUNTV": "2775", "SUPREMEIND": "2781",
+    "SUZLON": "2787", "SYNGENE": "1793", "TATACONSUM": "2841", "TATAELXSI": "2867",
+    "TATAMOTORS": "2885", "TATAPOWER": "2888", "TATASTEEL": "2892", "TATATECH": "5900",
+    "TCS": "2903", "TECHM": "2918", "TIINDIA": "4815", "TITAGARH": "2986", "TITAN": "2992",
+    "TORNTPHARM": "3015", "TORNTPOWER": "3018", "TRENT": "3048", "TVSMOTOR": "3082",
+    "ULTRACEMCO": "3103", "UNIONBANK": "3116", "UNITDSPR": "1845", "UNOMINDA": "3134",
+    "UPL": "3140", "VBL": "2120", "VEDL": "2650", "VOLTAS": "3193", "WIPRO": "3238",
+    "YESBANK": "3277", "ZEEL": "3307", "ZOMATO": "4739", "ZYDUSLIFE": "432"
+}
+
+SYMBOL_TO_SEGMENT_MAP = {
+    "011NSETEST": "EQ_I", "021NSETEST": "EQ_I", "031NSETEST": "EQ_I", "041NSETEST": "EQ_I",
+    "051NSETEST": "EQ_I", "061NSETEST": "EQ_I", "071NSETEST": "EQ_I", "081NSETEST": "EQ_I",
+    "091NSETEST": "EQ_I", "101NSETEST": "EQ_I", "111NSETEST": "EQ_I", "121NSETEST": "EQ_I",
+    "131NSETEST": "EQ_I", "141NSETEST": "EQ_I", "151NSETEST": "EQ_I", "161NSETEST": "EQ_I",
+    "171NSETEST": "EQ_I", "181NSETEST": "EQ_I", "360ONE": "EQ_I", "ABB": "EQ_I", "ABCAPITAL": "EQ_I",
+    "ADANIENSOL": "EQ_I", "ADANIENT": "EQ_I", "ADANIGREEN": "EQ_I", "ADANIPORTS": "EQ_I",
+    "ALKEM": "EQ_I", "AMBER": "EQ_I", "AMBUJACEM": "EQ_I", "ANGELONE": "EQ_I", "APLAPOLLO": "EQ_I",
+    "APOLLOHOSP": "EQ_I", "ASHOKLEY": "EQ_I", "ASIANPAINT": "EQ_I", "ASTRAL": "EQ_I", "AUBANK": "EQ_I",
+    "AUROPHARMA": "EQ_I", "AXISBANK": "EQ_I", "BAJAJ-AUTO": "EQ_I", "BAJAJFINSV": "EQ_I",
+    "BAJFINANCE": "EQ_I", "BALKRISIND": "EQ_I", "BALRAMCHIN": "EQ_I", "BANDHANBNK": "EQ_I",
+    "BANKBARODA": "EQ_I", "BANKINDIA": "EQ_I", "BANKNIFTY": "IDX_I", "BATAINDIA": "EQ_I",
+    "BDL": "EQ_I", "BEL": "EQ_I", "BERGEPAINT": "EQ_I", "BHARATFORG": "EQ_I", "BHARTIARTL": "EQ_I",
+    "BHEL": "EQ_I", "BIOCON": "EQ_I", "BLUESTARCO": "EQ_I", "BOSCHLTD": "EQ_I", "BPCL": "EQ_I",
+    "BRITANNIA": "EQ_I", "BSE": "EQ_I", "BSOFT": "EQ_I", "CAMS": "EQ_I", "CANBK": "EQ_I",
+    "CANFINHOME": "EQ_I", "CDSL": "EQ_I", "CENTURYTEX": "EQ_I", "CGPOWER": "EQ_I",
+    "CHAMBLFERT": "EQ_I", "CHOLAFIN": "EQ_I", "CIPLA": "EQ_I", "COALINDIA": "EQ_I",
+    "COFORGE": "EQ_I", "COLPAL": "EQ_I", "CONCOR": "EQ_I", "COROMANDEL": "EQ_I", "CROMPTON": "EQ_I",
+    "CUB": "EQ_I", "CUMMINSIND": "EQ_I", "CYIENT": "EQ_I", "DABUR": "EQ_I", "DALBHARAT": "EQ_I",
+    "DEEPAKNTR": "EQ_I", "DELHIVERY": "EQ_I", "DELTAcorp": "EQ_I", "DIVISLAB": "EQ_I",
+    "DIXON": "EQ_I", "DLF": "EQ_I", "DMART": "EQ_I", "DRREDDY": "EQ_I", "EICHERMOT": "EQ_I",
+    "ESCORTS": "EQ_I", "ETERNAL": "EQ_I", "EXIDEIND": "EQ_I", "FEDERALBNK": "EQ_I",
+    "FINNIFTY": "IDX_I", "FORTIS": "EQ_I", "GAIL": "EQ_I", "GLENMARK": "EQ_I", "GMRINFRA": "EQ_I",
+    "GNFC": "EQ_I", "GODREJCP": "EQ_I", "GODREJPROP": "EQ_I", "GRANULES": "EQ_I", "GRASIM": "EQ_I",
+    "GUJGASLTD": "EQ_I", "HAL": "EQ_I", "HAVELLS": "EQ_I", "HCLTECH": "EQ_I", "HDFCAMC": "EQ_I",
+    "HDFCBANK": "EQ_I", "HDFCLIFE": "EQ_I", "HEROMOTOCO": "EQ_I", "HFCL": "EQ_I", "HINDALCO": "EQ_I",
+    "HINDCOPPER": "EQ_I", "HINDPETRO": "EQ_I", "HINDUNILVR": "EQ_I", "HINDZINC": "EQ_I",
+    "HUDCO": "EQ_I", "ICICIBANK": "EQ_I", "ICICIGI": "EQ_I", "ICICIPRULI": "EQ_I", "IDEA": "EQ_I",
+    "IDFC": "EQ_I", "IDFCFIRSTB": "EQ_I", "IEX": "EQ_I", "IGL": "EQ_I", "IIFL": "EQ_I",
+    "INDHOTEL": "EQ_I", "INDIACEM": "EQ_I", "INDIANB": "EQ_I", "INDIGO": "EQ_I", "INDUSINDBK": "EQ_I",
+    "INDUSTOWER": "EQ_I", "INFY": "EQ_I", "INOXWIND": "EQ_I", "IOC": "EQ_I", "IPCALAB": "EQ_I",
+    "IRCTC": "EQ_I", "IREDA": "EQ_I", "IRFC": "EQ_I", "ITC": "EQ_I", "JINDALSTEL": "EQ_I",
+    "JIOFIN": "EQ_I", "JKCEMENT": "EQ_I", "JSWENERGY": "EQ_I", "JSWSTEEL": "EQ_I", "JUBLFOOD": "EQ_I",
+    "KALYANKJIL": "EQ_I", "KAYNES": "EQ_I", "KEI": "EQ_I", "KFINTECH": "EQ_I", "KOTAKBANK": "EQ_I",
+    "KPITTECH": "EQ_I", "LAURUSLABS": "EQ_I", "LICHSGFIN": "EQ_I", "LICI": "EQ_I", "LODHA": "EQ_I",
+    "LT": "EQ_I", "LTF": "EQ_I", "LTIM": "EQ_I", "LUPIN": "EQ_I", "M&M": "EQ_I", "M&MFIN": "EQ_I",
+    "MANAPPURAM": "EQ_I", "MANKIND": "EQ_I", "MARICO": "EQ_I", "MARUTI": "EQ_I", "MAXHEALTH": "EQ_I",
+    "MAZDOCK": "EQ_I", "MCX": "EQ_I", "METROPOLIS": "EQ_I", "MFSL": "EQ_I", "MIDCPNIFTY": "IDX_I",
+    "MOTHERSON": "EQ_I", "MPHASIS": "EQ_I", "MRF": "EQ_I", "MUTHOOTFIN": "EQ_I",
+    "NATIONALUM": "EQ_I", "NAUKRI": "EQ_I", "NAVINFLUOR": "EQ_I", "NBCC": "EQ_I", "NCC": "EQ_I",
+    "NESTLEIND": "EQ_I", "NHPC": "EQ_I", "NIFTY": "IDX_I", "NIFTYNXT50": "IDX_I", "NMDC": "EQ_I",
+    "NTPC": "EQ_I", "NUVAMA": "EQ_I", "NYKAA": "EQ_I", "OBEROIRLTY": "EQ_I", "OFSS": "EQ_I",
+    "OIL": "EQ_I", "ONGC": "EQ_I", "PAGEIND": "EQ_I", "PATANJALI": "EQ_I", "PAYTM": "EQ_I",
+    "PEL": "EQ_I", "PERSISTENT": "EQ_I", "PETRONET": "EQ_I", "PFC": "EQ_I", "PGEL": "EQ_I",
+    "PHOENIXLTD": "EQ_I", "PIDILITIND": "EQ_I", "PIIND": "EQ_I", "PNB": "EQ_I", "PNBHOUSING": "EQ_I",
+    "POLICYBZR": "EQ_I", "POLYCAB": "EQ_I", "POWERGRID": "EQ_I", "POWERINDIA": "EQ_I",
+    "PPLPHARMA": "EQ_I", "PRESTIGE": "EQ_I", "RBLBANK": "EQ_I", "RECLTD": "EQ_I", "RELIANCE": "EQ_I",
+    "RVNL": "EQ_I", "SAIL": "EQ_I", "SAMMAANCAP": "EQ_I", "SBICARD": "EQ_I", "SBILIFE": "EQ_I",
+    "SBIN": "EQ_I", "SHREECEM": "EQ_I", "SHRIRAMFIN": "EQ_I", "SIEMENS": "EQ_I", "SOLARINDS": "EQ_I",
+    "SONACOMS": "EQ_I", "SRF": "EQ_I", "SUNPHARMA": "EQ_I", "SUNTV": "EQ_I", "SUPREMEIND": "EQ_I",
+    "SUZLON": "EQ_I", "SYNGENE": "EQ_I", "TATACONSUM": "EQ_I", "TATAELXSI": "EQ_I",
+    "TATAMOTORS": "EQ_I", "TATAPOWER": "EQ_I", "TATASTEEL": "EQ_I", "TATATECH": "EQ_I",
+    "TCS": "EQ_I", "TECHM": "EQ_I", "TIINDIA": "EQ_I", "TITAGARH": "EQ_I", "TITAN": "EQ_I",
+    "TORNTPHARM": "EQ_I", "TORNTPOWER": "EQ_I", "TRENT": "EQ_I", "TVSMOTOR": "EQ_I",
+    "ULTRACEMCO": "EQ_I", "UNIONBANK": "EQ_I", "UNITDSPR": "EQ_I", "UNOMINDA": "EQ_I",
+    "UPL": "EQ_I", "VBL": "EQ_I", "VEDL": "EQ_I", "VOLTAS": "EQ_I", "WIPRO": "EQ_I",
+    "YESBANK": "EQ_I", "ZEEL": "EQ_I", "ZOMATO": "EQ_I", "ZYDUSLIFE": "EQ_I"
+}
 
 # --- Configuration Loading ---
 
 def load_config(config_path=None):
-    """
-    Loads the YAML configuration file.
-
-    Args:
-        config_path (str, optional): The path to the config.yaml file.
-                                     Defaults to BASE_DIR/config/config.yaml.
-
-    Returns:
-        dict: A dictionary containing the configuration parameters.
-              Returns an empty dict if the file is not found.
-    """
+    """Loads the YAML configuration file."""
     if config_path is None:
         config_path = BASE_DIR / "config" / "config.yaml"
     else:
@@ -42,69 +150,37 @@ def load_config(config_path=None):
             return {}
 
 def get_secrets():
-    """
-    Loads secrets from environment variables.
-
-    This function explicitly loads from a .env file for local development ease,
-    but in production, environment variables should be set directly.
-
-    Returns:
-        dict: A dictionary containing the required secrets.
-
-    Raises:
-        ValueError: If any of the required environment variables are not set.
-    """
-    # --- Robust .env file loading ---
-    # Checks for both `.env` and `.env.txt` to handle common Windows file naming issues.
+    """Loads secrets from environment variables or a .env file."""
     path_exact = BASE_DIR / ".env"
     path_with_txt = BASE_DIR / ".env.txt"
 
     dotenv_path_to_load = None
-
     if path_exact.exists():
-        logger.info(f"Found credentials file at: {path_exact}")
         dotenv_path_to_load = path_exact
     elif path_with_txt.exists():
-        logger.warning(f"Found credentials file at '{path_with_txt}'.")
-        logger.warning("This is likely because the file was saved as a text file.")
-        logger.warning("For best practice, please rename it to just '.env'.")
         dotenv_path_to_load = path_with_txt
-    else:
-        logger.warning(f"No .env file found at '{path_exact}' or '{path_with_txt}'.")
-        logger.warning("The application will rely on system environment variables.")
 
     if dotenv_path_to_load:
+        logger.info(f"Loading credentials from: {dotenv_path_to_load}")
         load_dotenv(dotenv_path=dotenv_path_to_load)
+    else:
+        logger.warning("No .env file found. Relying on system environment variables.")
 
-    required_secrets = [
-        "DHAN_CLIENT_ID",
-        "DHAN_ACCESS_TOKEN",
-        "TELEGRAM_BOT_TOKEN",
-        "TELEGRAM_CHAT_ID",
-    ]
-
+    required_secrets = ["DHAN_CLIENT_ID", "DHAN_ACCESS_TOKEN", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]
     secrets = {key: os.getenv(key) for key in required_secrets}
 
     missing_secrets = [key for key, value in secrets.items() if value is None]
-
     if missing_secrets:
-        raise ValueError(
-            f"Missing required environment variables: {', '.join(missing_secrets)}. "
-            "Please set them in your environment or a .env file in the project root."
-        )
+        raise ValueError(f"Missing required environment variables: {', '.join(missing_secrets)}. Please set them in your environment or a .env file.")
 
     return secrets
 
 # --- Main Configuration Objects ---
-
-# Load configuration and secrets when the module is imported.
-# This makes them available as global objects for other modules to use.
 CONFIG = load_config()
 try:
     SECRETS = get_secrets()
 except ValueError as e:
-    print(f"FATAL: {e}")
-    # For this structure, other modules importing this will see the error.
+    logger.critical(e)
     SECRETS = {}
 
 # --- Helper Functions to Access Config ---
@@ -137,40 +213,16 @@ def get_universe_symbols():
         return [line.strip() for line in f if line.strip() and not line.startswith("#")]
 
 def get_symbol_id_map():
-    """Loads the symbol to security ID mapping from the JSON file."""
-    map_path = BASE_DIR / "config" / "symbol_to_id.json"
-    if not map_path.exists():
-        logger.error(f"Symbol to ID map file not found at {map_path}")
-        return {}
-    with open(map_path, "r") as f:
-        import json
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            logger.error(f"Could not decode JSON from {map_path}")
-            return {}
+    """Returns the embedded symbol-to-ID map."""
+    return SYMBOL_TO_ID_MAP
 
 def get_symbol_segment_map():
-    """Loads the symbol to API segment mapping from the JSON file."""
-    map_path = BASE_DIR / "config" / "symbol_to_segment.json"
-    if not map_path.exists():
-        logger.error(f"Symbol to Segment map file not found at {map_path}")
-        return {}
-    with open(map_path, "r") as f:
-        import json
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            logger.error(f"Could not decode JSON from {map_path}")
-            return {}
+    """Returns the embedded symbol-to-segment map."""
+    return SYMBOL_TO_SEGMENT_MAP
 
 if __name__ == "__main__":
-    # Example of how to use this module and a simple test
-    # Note: For this standalone test, logger might not be configured.
-    # We are using basic print statements here intentionally.
-    print("--- Configuration Loaded ---")
+    print("--- Configuration Module Test ---")
     print(f"Scan Interval: {get_scanner_config().get('scan_interval_minutes')} minutes")
-    print(f"Signal Threshold: {get_signal_config().get('oi_change_percent_threshold')}%")
 
     print("\n--- Secrets (checking if loaded) ---")
     try:
@@ -179,11 +231,14 @@ if __name__ == "__main__":
     except ValueError as e:
         print(f"Secrets check failed as expected (if .env is missing): {e}")
 
-
     print("\n--- Universe ---")
     symbols = get_universe_symbols()
     print(f"Found {len(symbols)} symbols in universe: {symbols[:5]}...")
 
-    print("\n--- Symbol ID Map ---")
+    print("\n--- Symbol ID Map (Embedded) ---")
     symbol_map = get_symbol_id_map()
-    print(f"Found {len(symbol_map)} symbol mappings: {list(symbol_map.keys())[:5]}...")
+    print(f"Loaded {len(symbol_map)} embedded symbol mappings. Example: NIFTY -> {symbol_map.get('NIFTY')}")
+
+    print("\n--- Symbol Segment Map (Embedded) ---")
+    segment_map = get_symbol_segment_map()
+    print(f"Loaded {len(segment_map)} embedded segment mappings. Example: NIFTY -> {segment_map.get('NIFTY')}")
