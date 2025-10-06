@@ -5,14 +5,15 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from loguru import logger
 
-from .config import SECRETS, get_api_config, get_symbol_id_map, get_symbol_segment_map
+from .config import SECRETS, get_api_config, get_symbol_id_map
 from .utils import get_correct_expiry_date
 
 # --- Constants ---
 DHAN_API_URL = "https://api.dhan.co"
-# The correct endpoint for the v2 Option Chain API, as per user's finding.
 OPTION_CHAIN_ENDPOINT = "/v2/optionchain"
 FUND_LIMIT_ENDPOINT = "/v2/fundlimit"
+# The correct, unified segment for all NSE F&O instruments (both stocks and indices)
+NSE_FNO_SEGMENT = "NSE_FNO"
 
 # --- API Client Setup ---
 def requests_retry_session(
@@ -34,7 +35,6 @@ class DhanAPI:
         self.client_id = SECRETS.get("DHAN_CLIENT_ID")
         self.access_token = SECRETS.get("DHAN_ACCESS_TOKEN")
         self.symbol_id_map = get_symbol_id_map()
-        self.symbol_segment_map = get_symbol_segment_map()
 
         if not self.client_id or not self.access_token:
             raise ValueError("DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN must be set.")
@@ -76,17 +76,16 @@ class DhanAPI:
         logger.info(f"Using calculated expiry '{expiry_date}' for {symbol}.")
 
         security_id_str = self.symbol_id_map.get(symbol)
-        segment = self.symbol_segment_map.get(symbol)
 
-        if not security_id_str or not segment:
-            logger.warning(f"Security ID or Segment not found for symbol '{symbol}'. Skipping.")
+        if not security_id_str:
+            logger.warning(f"Security ID not found for symbol '{symbol}'. Skipping.")
             return None
 
         url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
         # Corrected payload keys as per the user's finding in the documentation.
         payload = {
             "securityId": security_id_str,
-            "exchangeSegment": segment,
+            "exchangeSegment": NSE_FNO_SEGMENT, # Using the correct, unified segment
             "expiryDate": expiry_date
         }
 
