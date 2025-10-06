@@ -76,7 +76,8 @@ C:\DHAN_SCANNER\
 │
 ├── start_scanner.bat           # Easy-to-use script to start the application.
 ├── stop_scanner.bat            # Easy-to-use script to stop the application.
-└── daily_check.ps1             # PowerShell script for health checks.
+├── daily_check.ps1             # PowerShell script for health checks.
+└── install_startup.ps1         # **NEW**: One-time script to enable auto-start on login.
 ```
 
 ---
@@ -121,13 +122,28 @@ Follow these steps exactly to set up the scanner on a new machine.
 
 ## How to Run the Scanner
 
-- **To Start**: Simply double-click the **`start_scanner.bat`** file.
+- **To Start Manually**: Double-click the **`start_scanner.bat`** file.
 - **To Stop**: Double-click the **`stop_scanner.bat`** file, or close the GUI window.
 - **Daily Health Check**: Before the market opens, run **`daily_check.ps1`** (right-click -> "Run with PowerShell") to verify your setup.
 
 ---
 
-## Automation with Windows Task Scheduler
+## Automatic Startup on Login (Recommended)
+
+To ensure the scanner automatically restarts after a power outage or system reboot, you can configure it to launch every time you log in to Windows.
+
+**This is a simple, one-time setup:**
+
+1.  Navigate to your `C:\dhan_scanner` folder.
+2.  Find the file named **`install_startup.ps1`**.
+3.  **Right-click** on the file and select **"Run with PowerShell"**.
+4.  A window will appear confirming that the setup was successful.
+
+That's it. The scanner will now start automatically whenever you log in. You do not need to run this script again unless you want to move the scanner to a new location.
+
+---
+
+## Manual Automation with Windows Task Scheduler
 
 To run the scanner automatically every market day at 9:00 AM, follow the instructions in the original `README.md` or use the Task Scheduler wizard to run `C:\dhan_scanner\start_scanner.bat` daily.
 
