@@ -150,6 +150,20 @@ def get_symbol_id_map():
             logger.error(f"Could not decode JSON from {map_path}")
             return {}
 
+def get_symbol_segment_map():
+    """Loads the symbol to API segment mapping from the JSON file."""
+    map_path = BASE_DIR / "config" / "symbol_to_segment.json"
+    if not map_path.exists():
+        logger.error(f"Symbol to Segment map file not found at {map_path}")
+        return {}
+    with open(map_path, "r") as f:
+        import json
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            logger.error(f"Could not decode JSON from {map_path}")
+            return {}
+
 if __name__ == "__main__":
     # Example of how to use this module and a simple test
     # Note: For this standalone test, logger might not be configured.

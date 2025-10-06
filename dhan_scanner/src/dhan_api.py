@@ -6,7 +6,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from loguru import logger
 
-from .config import SECRETS, get_api_config, get_symbol_id_map
+from .config import SECRETS, get_api_config, get_symbol_id_map, get_symbol_segment_map
 from .utils import get_monthly_expiry_date
 
 # --- Constants ---
@@ -48,6 +48,7 @@ class DhanAPI:
         self.client_id = SECRETS.get("DHAN_CLIENT_ID")
         self.access_token = SECRETS.get("DHAN_ACCESS_TOKEN")
         self.symbol_id_map = get_symbol_id_map()
+        self.symbol_segment_map = get_symbol_segment_map()
 
         if not self.client_id or not self.access_token:
             raise ValueError("DHAN_CLIENT_ID and DHAN_ACCESS_TOKEN must be set.")
@@ -97,18 +98,13 @@ class DhanAPI:
                   or the symbol is not found in the security ID map.
         """
         security_id_str = self.symbol_id_map.get(symbol)
-        if not security_id_str:
-            logger.warning(f"Security ID not found for symbol '{symbol}'. Skipping.")
+        segment = self.symbol_segment_map.get(symbol)
+
+        if not security_id_str or not segment:
+            logger.warning(f"Security ID or Segment not found for symbol '{symbol}'. Skipping.")
             return None
 
         url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
-
-        # Determine the segment based on the symbol type (Index vs. Stock)
-        # This is a simple heuristic; a more robust solution might map this from the master file.
-        if "NIFTY" in symbol.upper():
-            segment = "IDX_I"
-        else:
-            segment = "EQ_I"
 
         expiry_date = get_monthly_expiry_date()
 
