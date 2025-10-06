@@ -5,6 +5,7 @@ scanner:
   scan_interval_minutes: 5
   strikes_to_check: 2  # ATM +/- this many strikes
   concurrency: 4       # Number of parallel requests to Dhan API
+  inter_request_delay_seconds: 0.1 # Delay between each API call to respect rate limits
 
 # Signal logic
 signal:

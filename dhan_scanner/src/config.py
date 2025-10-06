@@ -85,15 +85,6 @@ def get_secrets():
 
     secrets = {key: os.getenv(key) for key in required_secrets}
 
-    # --- DIAGNOSTIC CODE for token verification ---
-    token = secrets.get("DHAN_ACCESS_TOKEN")
-    if token and len(token) > 10:
-        masked_token = f"{token[:5]}...{token[-5:]}"
-        log_msg = f"Using Access Token that starts with '{token[:5]}' and ends with '{token[-5:]}'"
-        print(f"[DIAGNOSTIC] {log_msg}")
-        logger.info(f"Verifying token: {masked_token}")
-    # --- END DIAGNOSTIC CODE ---
-
     missing_secrets = [key for key, value in secrets.items() if value is None]
 
     if missing_secrets:

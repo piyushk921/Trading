@@ -119,15 +119,25 @@ class Scanner:
 
     def run_scan_cycle(self):
         """
-        Executes a single scan cycle over the entire universe of symbols using a thread pool.
+        Executes a single scan cycle over the entire universe of symbols using a thread pool,
+        with a delay between requests to respect API rate limits.
         """
         concurrency = self.scanner_config.get("concurrency", 4)
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            # Create a future for each symbol scan
-            future_to_symbol = {
-                executor.submit(self.process_symbol, symbol): symbol for symbol in self.universe
-            }
+        delay = self.scanner_config.get("inter_request_delay_seconds", 0.1)
 
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            future_to_symbol = {}
+            logger.info(f"Submitting {len(self.universe)} symbols to the scanner with a {delay}s delay between each.")
+
+            for symbol in self.universe:
+                if not self.running:
+                    logger.warning("Scanner stopped during symbol submission.")
+                    break
+                future = executor.submit(self.process_symbol, symbol)
+                future_to_symbol[future] = symbol
+                time.sleep(delay) # Pause to respect rate limits
+
+            logger.info("All symbols submitted. Waiting for results...")
             for future in as_completed(future_to_symbol):
                 symbol = future_to_symbol[future]
                 try:

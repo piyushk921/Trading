@@ -1,6 +1,35 @@
 # src/utils.py
 
+import calendar
+from datetime import date, timedelta
 from .config import get_strike_selection_config
+
+def get_monthly_expiry_date() -> str:
+    """
+    Calculates the date of the last Tuesday of the current month.
+
+    Returns:
+        str: The expiry date in "YYYY-MM-DD" format.
+    """
+    today = date.today()
+    year, month = today.year, today.month
+
+    # Get a matrix of the month's calendar
+    month_cal = calendar.monthcalendar(year, month)
+
+    # The last Tuesday must be in the last or second-to-last week
+    last_week = month_cal[-1]
+    second_last_week = month_cal[-2]
+
+    # calendar.TUESDAY is 1
+    if last_week[calendar.TUESDAY] != 0:
+        # Last Tuesday is in the last week of the month
+        day = last_week[calendar.TUESDAY]
+    else:
+        # Last Tuesday is in the second-to-last week
+        day = second_last_week[calendar.TUESDAY]
+
+    return date(year, month, day).strftime("%Y-%m-%d")
 
 def choose_strike_step(symbol: str, ltp: float) -> int:
     """
@@ -87,7 +116,12 @@ def find_closest_available_strike(target_strike: int, available_strikes: list[in
 if __name__ == "__main__":
     print("--- Testing Strike Utility Functions ---")
 
-    # Test case 1: NIFTY
+    # Test case 1: Expiry Date
+    expiry = get_monthly_expiry_date()
+    print(f"\nCalculated Monthly Expiry Date: {expiry}")
+    # Manual verification needed, but this tests if the function runs.
+
+    # Test case 2: NIFTY
     nifty_ltp = 21342
     nifty_step = choose_strike_step("NIFTY", nifty_ltp)
     nifty_atm = calculate_atm_strike(nifty_ltp, nifty_step)

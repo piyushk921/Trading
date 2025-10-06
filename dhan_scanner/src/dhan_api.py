@@ -7,6 +7,7 @@ from urllib3.util.retry import Retry
 from loguru import logger
 
 from .config import SECRETS, get_api_config, get_symbol_id_map
+from .utils import get_monthly_expiry_date
 
 # --- Constants ---
 DHAN_API_URL = "https://api.dhan.co"
@@ -101,18 +102,15 @@ class DhanAPI:
             return None
 
         url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
-        params = {
-            "securityId": security_id,
-            "expiry": "MONTHLY" # Per Dhan docs, this can be WEEKLY/MONTHLY/etc.
-                               # Assuming monthly for now, may need configuration.
-        }
+
+        # Calculate the correct monthly expiry date
+        expiry_date = get_monthly_expiry_date()
 
         try:
-            # Changed from GET to POST as the API expects a POST request for this endpoint.
-            # The payload is sent as JSON instead of URL parameters.
+            # The payload now uses the correct key 'expiryDate' and the dynamic date.
             payload = {
                 "securityId": security_id,
-                "expiry": "MONTHLY"
+                "expiryDate": expiry_date
             }
             response = self.session.post(url, headers=self.headers, json=payload, timeout=10)
             response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
