@@ -1,7 +1,6 @@
 # src/utils.py
 
-from datetime import datetime, timedelta
-from calendar import monthrange
+from datetime import datetime
 
 # --- Strike Calculation Utilities ---
 
@@ -41,46 +40,63 @@ def find_closest_available_strike(target_strike, available_strikes):
         return None
     return min(available_strikes, key=lambda x: abs(x - target_strike))
 
-# --- Expiry Date Calculation Utilities ---
+# --- Expiry Date Selection Utilities ---
 
-def get_last_tuesday_of_month(year, month):
-    """Calculates the date of the last Tuesday of a given month and year."""
-    # Last day of the month (day_of_week: 0=Mon, 1=Tue, ..., 6=Sun)
-    last_day_of_month, num_days = monthrange(year, month)
-    last_date = datetime(year, month, num_days)
-
-    # Calculate how many days to subtract to get to the last Tuesday
-    # 1 is the weekday for Tuesday
-    offset = (last_date.weekday() - 1) % 7
-    last_tuesday = last_date - timedelta(days=offset)
-    return last_tuesday
-
-def get_next_tuesday(from_date):
-    """Finds the date of the very next Tuesday from a given date."""
-    days_ahead = (1 - from_date.weekday() + 7) % 7
-    if days_ahead == 0: # If today is Tuesday, get next Tuesday
-        days_ahead = 7
-    return from_date + timedelta(days=days_ahead)
-
-def get_correct_expiry_date(symbol: str) -> str:
+def get_correct_expiry_date(symbol: str, available_expiries: list[str]) -> str | None:
     """
-    Determines the correct expiry date string based on the symbol, following user rules.
-    - NIFTY: Weekly expiry (nearest upcoming Tuesday).
-    - All others: Monthly expiry (last Tuesday of the current month).
-    Returns the date in YYYY-MM-DD format as required by the API.
+    Selects the correct expiry date from a list of available dates provided by the API.
+
+    Args:
+        symbol (str): The symbol, e.g., "NIFTY".
+        available_expiries (list[str]): A list of date strings in 'YYYY-MM-DD' format.
+
+    Returns:
+        str | None: The selected expiry date string, or None if no suitable date is found.
     """
+    if not available_expiries:
+        return None
+
     today = datetime.now().date()
 
-    if symbol == "NIFTY":
-        # Find the nearest upcoming Tuesday for weekly expiry
-        expiry_date = get_next_tuesday(today)
-    else:
-        # For all other stocks and indices, find the last Tuesday of the current month
-        expiry_date = get_last_tuesday_of_month(today.year, today.month)
-        # If the last Tuesday has already passed this month, get the last Tuesday of the next month
-        if today > expiry_date.date():
-            next_month = today.month % 12 + 1
-            next_year = today.year + today.month // 12
-            expiry_date = get_last_tuesday_of_month(next_year, next_month)
+    # 1. Parse and filter for future dates
+    future_expiries = []
+    for date_str in available_expiries:
+        try:
+            expiry_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            if expiry_date >= today:
+                future_expiries.append(expiry_date)
+        except ValueError:
+            continue # Ignore invalid date formats
 
-    return expiry_date.strftime("%Y-%m-%d")
+    if not future_expiries:
+        return None
+
+    # 2. Sort the dates
+    future_expiries.sort()
+
+    # 3. Select the expiry based on the symbol
+    selected_date = None
+    if symbol == "NIFTY":
+        # For NIFTY, the rule is the nearest weekly expiry.
+        selected_date = future_expiries[0]
+    else:
+        # For others, find the nearest monthly expiry.
+        # Heuristic: The monthly expiry is the last one in its month.
+        for i, current_date in enumerate(future_expiries):
+            # If it's the last date in our list, it must be a monthly expiry
+            if i + 1 == len(future_expiries):
+                selected_date = current_date
+                break
+
+            # If the next date is in a different month, then this one is monthly
+            next_date = future_expiries[i+1]
+            if current_date.month != next_date.month:
+                selected_date = current_date
+                break
+
+    # If no monthly expiry was found (e.g., only weeklys left this month),
+    # default to the nearest expiry to ensure we always get data.
+    if not selected_date and future_expiries:
+        selected_date = future_expiries[0]
+
+    return selected_date.strftime("%Y-%m-%d") if selected_date else None
