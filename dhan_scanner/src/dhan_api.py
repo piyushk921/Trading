@@ -10,8 +10,8 @@ from .utils import get_correct_expiry_date
 
 # --- Constants ---
 DHAN_API_URL = "https://api.dhan.co"
-# Corrected endpoint with the hyphen as per the official documentation
-OPTION_CHAIN_ENDPOINT = "/v2/option-chain/chain"
+# The correct endpoint for the v2 Option Chain API, as per user's finding.
+OPTION_CHAIN_ENDPOINT = "/v2/optionchain"
 FUND_LIMIT_ENDPOINT = "/v2/fundlimit"
 
 # --- API Client Setup ---
@@ -69,7 +69,8 @@ class DhanAPI:
 
     def get_option_chain(self, symbol: str):
         """
-        Fetches the full option chain for a given symbol using a determined expiry date.
+        Fetches the full option chain for a given symbol using the correct endpoint,
+        payload structure, and rule-based expiry date.
         """
         expiry_date = get_correct_expiry_date(symbol)
         logger.info(f"Using calculated expiry '{expiry_date}' for {symbol}.")
@@ -82,10 +83,11 @@ class DhanAPI:
             return None
 
         url = f"{DHAN_API_URL}{OPTION_CHAIN_ENDPOINT}"
+        # Corrected payload keys as per the user's finding in the documentation.
         payload = {
-            "UnderlyingScrip": security_id_str,
-            "UnderlyingSeg": segment,
-            "Expiry": expiry_date
+            "securityId": security_id_str,
+            "exchangeSegment": segment,
+            "expiryDate": expiry_date
         }
 
         try:
@@ -95,6 +97,7 @@ class DhanAPI:
 
             data = response.json()
             if data.get("status", "failure") == "success" and data.get("data"):
+                # The correct data structure is nested under 'data' and then 'oc'
                 return {
                     "underlyingLtp": data["data"].get("last_price"),
                     "optionChainDetails": data["data"].get("oc")
