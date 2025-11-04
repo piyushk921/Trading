@@ -1,0 +1,301 @@
+{
+  "info": {
+    "name": "Benefactor Wealth CRM API",
+    "description": "Complete API collection for testing the CRM system",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost/api",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "clientId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', response.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', response.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@benefactor.local\",\n  \"password\": \"ChangeMe123!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', response.accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{refreshToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Clients",
+      "item": [
+        {
+          "name": "List Clients",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients"]
+            }
+          }
+        },
+        {
+          "name": "Get Client by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "{{clientId}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Client",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('clientId', response.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Amit\",\n  \"lastName\": \"Patel\",\n  \"email\": \"amit.patel@example.com\",\n  \"phone\": \"+919876543211\",\n  \"status\": \"prospect\",\n  \"pan\": \"FGHIJ6789K\",\n  \"bankAccount\": \"9876543210\",\n  \"bankName\": \"ICICI Bank\",\n  \"bankIfsc\": \"ICIC0001234\",\n  \"address\": \"789 Brigade Road\",\n  \"city\": \"Bangalore\",\n  \"state\": \"Karnataka\",\n  \"postalCode\": \"560001\",\n  \"country\": \"India\",\n  \"riskProfile\": \"moderate\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients"]
+            }
+          }
+        },
+        {
+          "name": "Update Client",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\",\n  \"isOnboarded\": true,\n  \"onboardedAt\": \"2024-12-01T10:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "{{clientId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Client",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/clients/{{clientId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["clients", "{{clientId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "Twilio Webhook (Simulate Inbound SMS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "From",
+                  "value": "+919876543210"
+                },
+                {
+                  "key": "To",
+                  "value": "+911234567890"
+                },
+                {
+                  "key": "Body",
+                  "value": "Hello, I need help with my portfolio"
+                },
+                {
+                  "key": "MessageSid",
+                  "value": "SM123456789"
+                },
+                {
+                  "key": "AccountSid",
+                  "value": "AC123456789"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/twilio",
+              "host": ["{{baseUrl}}"],
+              "path": ["webhooks", "twilio"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
