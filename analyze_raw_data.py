@@ -248,12 +248,26 @@ def main():
     import sys
 
     if len(sys.argv) > 1:
-        # Use file path provided as argument
-        file_path = Path(sys.argv[1])
-        if not file_path.exists():
-            print(f"File {file_path} not found!")
+        # Use file/directory path provided as argument
+        input_path = Path(sys.argv[1])
+        if not input_path.exists():
+            print(f"Path {input_path} not found!")
             return
-        analyze_json_file(file_path)
+
+        if input_path.is_dir():
+            # If directory provided, find all JSON files in it
+            json_files = sorted(input_path.glob("*.json"))
+            if not json_files:
+                print(f"No JSON files found in {input_path}")
+                return
+            print(f"Found {len(json_files)} JSON files in directory")
+            # Analyze the most recent file
+            file_path = json_files[-1]
+            print(f"Analyzing most recent file: {file_path.name}\n")
+            analyze_json_file(file_path)
+        else:
+            # Analyze the specific file
+            analyze_json_file(input_path)
     else:
         # Default behavior: look for directory
         data_dir = Path("data/raw_last4days")
