@@ -185,8 +185,8 @@ def analyze_json_file(file_path):
     contract_field = 'contract' if 'contract' in df.columns else 'symbol'
     price_field = None
 
-    # Find the price field
-    for possible_price in ['ltp', 'close', 'last_price', 'price']:
+    # Find the price field (prioritize 'price' over 'close' as 'close' might be all zeros)
+    for possible_price in ['ltp', 'price', 'last_price', 'close']:
         if possible_price in df.columns:
             price_field = possible_price
             break
