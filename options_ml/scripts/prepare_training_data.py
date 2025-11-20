@@ -12,6 +12,7 @@ This script:
 import argparse
 import sys
 from pathlib import Path
+import pandas as pd
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -59,6 +60,18 @@ def main():
         default=None,
         help="Lookahead horizon in minutes (None = end of day)"
     )
+    parser.add_argument(
+        "--filter-atm",
+        type=int,
+        default=None,
+        help="Keep only N strikes above and below ATM (e.g., 5 for ATM±5)"
+    )
+    parser.add_argument(
+        "--filter-moneyness",
+        type=float,
+        default=None,
+        help="Keep only strikes within moneyness threshold (e.g., 0.05 for ±5%%)"
+    )
 
     args = parser.parse_args()
 
@@ -84,6 +97,10 @@ def main():
     logger.info(f"Output file: {args.output_file}")
     logger.info(f"Target multiplier: {config.labels.target_multiplier}x")
     logger.info(f"Horizon: {config.labels.horizon_minutes} minutes" if config.labels.horizon_minutes else "Horizon: End of day")
+    if args.filter_moneyness:
+        logger.info(f"ATM Filter: Keep strikes within ±{args.filter_moneyness*100:.0f}% moneyness")
+    elif args.filter_atm:
+        logger.info(f"ATM Filter: Keep top {args.filter_atm} strikes above/below ATM")
 
     # Step 1: Load raw JSON files
     logger.info("\nStep 1: Loading raw JSON files")
@@ -116,6 +133,48 @@ def main():
         df_raw,
         min_snapshots=config.data.min_snapshots_per_contract
     )
+
+    # Step 2.5: Filter by moneyness (ATM strikes only)
+    if args.filter_moneyness or args.filter_atm:
+        logger.info("\nStep 2.5: Filtering by moneyness (keeping only ATM and near-ATM strikes)")
+        before_filter = len(df_filtered)
+
+        if args.filter_moneyness:
+            # Filter by moneyness percentage (e.g., 0.05 = ±5%)
+            df_filtered['abs_moneyness'] = abs((df_filtered['spot_price'] - df_filtered['strike']) / df_filtered['strike'])
+            df_filtered = df_filtered[df_filtered['abs_moneyness'] <= args.filter_moneyness].copy()
+            df_filtered = df_filtered.drop('abs_moneyness', axis=1)
+            logger.info(f"Kept strikes within ±{args.filter_moneyness*100:.0f}% moneyness")
+
+        elif args.filter_atm:
+            # Filter by keeping N strikes above and below ATM
+            import numpy as np
+
+            filtered_dfs = []
+            for (underlying, timestamp), group in df_filtered.groupby(['underlying', 'timestamp']):
+                if len(group) == 0:
+                    continue
+
+                # Get spot price (should be same for all in group)
+                spot = group['spot_price'].iloc[0]
+
+                # Calculate distance from ATM for each strike
+                group = group.copy()
+                group['strike_distance'] = abs(group['strike'] - spot)
+
+                # Sort by distance and take top N*2 (N above, N below)
+                group = group.sort_values('strike_distance')
+                top_strikes = group.head(args.filter_atm * 2)
+
+                filtered_dfs.append(top_strikes.drop('strike_distance', axis=1))
+
+            if filtered_dfs:
+                df_filtered = pd.concat(filtered_dfs, ignore_index=True)
+                logger.info(f"Kept top {args.filter_atm} strikes above and below ATM per underlying")
+
+        after_filter = len(df_filtered)
+        logger.info(f"Filtered from {before_filter:,} to {after_filter:,} snapshots ({(after_filter/before_filter)*100:.1f}% kept)")
+        logger.info(f"Removed {before_filter - after_filter:,} far OTM/ITM snapshots")
 
     # Step 3: Build features
     logger.info("\nStep 3: Building features")
