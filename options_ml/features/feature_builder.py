@@ -37,7 +37,7 @@ class FeatureBuilder:
         self.config = config or get_config()
         self.feature_config = self.config.features
 
-    def build_features(self, df: pd.DataFrame, chunk_size: int = 100000, use_disk: bool = True) -> pd.DataFrame:
+    def build_features(self, df: pd.DataFrame, chunk_size: int = 100000, use_disk: bool = True, num_chunks: int = None) -> pd.DataFrame:
         """
         Build complete feature set from a DataFrame of snapshots.
 
@@ -45,6 +45,7 @@ class FeatureBuilder:
             df: DataFrame with option snapshots (must have required columns)
             chunk_size: Process data in chunks to avoid memory issues (default: 100k rows)
             use_disk: Save chunks to disk for very large datasets (default: True)
+            num_chunks: If specified, divide dataset into exactly this many chunks (overrides chunk_size)
 
         Returns:
             DataFrame with added feature columns
@@ -56,7 +57,7 @@ class FeatureBuilder:
         logger.info(f"Building features for {len(df)} snapshots")
 
         # If dataset is small, process normally
-        if len(df) <= chunk_size:
+        if num_chunks is None and len(df) <= chunk_size:
             return self._build_features_internal(df)
 
         # For large datasets, process in chunks by symbol
@@ -80,22 +81,30 @@ class FeatureBuilder:
 
         # For very large datasets, save chunks to disk
         if use_disk and len(df) > 500000:
-            return self._build_features_with_disk(df, symbols, total_symbols, chunk_size)
+            return self._build_features_with_disk(df, symbols, total_symbols, chunk_size, num_chunks)
         else:
-            return self._build_features_in_memory(df, symbols, total_symbols, chunk_size)
+            return self._build_features_in_memory(df, symbols, total_symbols, chunk_size, num_chunks)
 
     def _build_features_in_memory(self, df: pd.DataFrame, symbols: np.ndarray,
-                                   total_symbols: int, chunk_size: int) -> pd.DataFrame:
+                                   total_symbols: int, chunk_size: int, num_chunks: int = None) -> pd.DataFrame:
         """Build features keeping chunks in memory (for medium datasets)."""
         processed_dfs = []
 
-        # Process symbols in batches
-        batch_size = max(1, chunk_size // 20)  # Assume ~20 snapshots per symbol
+        # Calculate batch size based on num_chunks if specified
+        if num_chunks is not None:
+            batch_size = max(1, total_symbols // num_chunks)
+            logger.info(f"Processing {total_symbols} symbols in {num_chunks} chunks (~{batch_size} symbols per chunk)")
+        else:
+            # Process symbols in batches
+            batch_size = max(1, chunk_size // 20)  # Assume ~20 snapshots per symbol
+
         for i in range(0, total_symbols, batch_size):
             batch_symbols = symbols[i:i+batch_size]
             batch_df = df[df['symbol'].isin(batch_symbols)].copy()
 
-            logger.info(f"Processing symbols {i+1}-{min(i+batch_size, total_symbols)} of {total_symbols} ({len(batch_df)} rows)")
+            chunk_num = (i // batch_size) + 1
+            total_chunks = (total_symbols + batch_size - 1) // batch_size
+            logger.info(f"Processing chunk {chunk_num}/{total_chunks}: symbols {i+1}-{min(i+batch_size, total_symbols)} of {total_symbols} ({len(batch_df)} rows)")
 
             batch_df = self._build_features_internal(batch_df)
             processed_dfs.append(batch_df)
@@ -107,7 +116,7 @@ class FeatureBuilder:
         return result_df
 
     def _build_features_with_disk(self, df: pd.DataFrame, symbols: np.ndarray,
-                                   total_symbols: int, chunk_size: int) -> pd.DataFrame:
+                                   total_symbols: int, chunk_size: int, num_chunks: int = None) -> pd.DataFrame:
         """Build features saving chunks to disk (for very large datasets)."""
         import tempfile
         import os
@@ -119,13 +128,21 @@ class FeatureBuilder:
         temp_files = []
 
         try:
-            # Process symbols in batches
-            batch_size = max(1, chunk_size // 20)  # Assume ~20 snapshots per symbol
+            # Calculate batch size based on num_chunks if specified
+            if num_chunks is not None:
+                batch_size = max(1, total_symbols // num_chunks)
+                logger.info(f"Processing {total_symbols} symbols in {num_chunks} chunks (~{batch_size} symbols per chunk)")
+            else:
+                # Process symbols in batches
+                batch_size = max(1, chunk_size // 20)  # Assume ~20 snapshots per symbol
+
             for i in range(0, total_symbols, batch_size):
                 batch_symbols = symbols[i:i+batch_size]
                 batch_df = df[df['symbol'].isin(batch_symbols)].copy()
 
-                logger.info(f"Processing symbols {i+1}-{min(i+batch_size, total_symbols)} of {total_symbols} ({len(batch_df)} rows)")
+                chunk_num = (i // batch_size) + 1
+                total_chunks = (total_symbols + batch_size - 1) // batch_size
+                logger.info(f"Processing chunk {chunk_num}/{total_chunks}: symbols {i+1}-{min(i+batch_size, total_symbols)} of {total_symbols} ({len(batch_df)} rows)")
 
                 batch_df = self._build_features_internal(batch_df)
 

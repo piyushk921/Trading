@@ -89,6 +89,12 @@ def main():
         action="store_true",
         help="Don't save chunks to disk (use for smaller datasets)"
     )
+    parser.add_argument(
+        "--num-chunks",
+        type=int,
+        default=None,
+        help="Divide dataset into exactly N chunks (e.g., 50 for very low memory). Overrides chunk-size."
+    )
 
     args = parser.parse_args()
 
@@ -239,13 +245,17 @@ def main():
 
     # Step 3: Build features
     logger.info("\nStep 3: Building features")
-    logger.info(f"Using chunk size: {args.chunk_size} rows")
+    if args.num_chunks:
+        logger.info(f"Processing in exactly {args.num_chunks} chunks")
+    else:
+        logger.info(f"Using chunk size: {args.chunk_size} rows")
     logger.info(f"Disk caching: {'Disabled' if args.no_disk else 'Enabled'}")
     feature_builder = FeatureBuilder(config)
     df_features = feature_builder.build_features(
         df_filtered,
         chunk_size=args.chunk_size,
-        use_disk=not args.no_disk
+        use_disk=not args.no_disk,
+        num_chunks=args.num_chunks
     )
 
     # Step 4: Build labels
