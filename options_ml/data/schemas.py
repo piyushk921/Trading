@@ -37,7 +37,7 @@ class OptionSnapshot(BaseModel):
     """
 
     timestamp: str
-    spot_price: float
+    spot_price: Optional[float] = None  # Made optional - some data sources don't include it
     price: float
     volume: int
     open_interest: int

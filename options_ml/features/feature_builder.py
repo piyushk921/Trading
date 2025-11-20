@@ -37,12 +37,13 @@ class FeatureBuilder:
         self.config = config or get_config()
         self.feature_config = self.config.features
 
-    def build_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def build_features(self, df: pd.DataFrame, chunk_size: int = 100000) -> pd.DataFrame:
         """
         Build complete feature set from a DataFrame of snapshots.
 
         Args:
             df: DataFrame with option snapshots (must have required columns)
+            chunk_size: Process data in chunks to avoid memory issues (default: 100k rows)
 
         Returns:
             DataFrame with added feature columns
@@ -53,6 +54,13 @@ class FeatureBuilder:
         """
         logger.info(f"Building features for {len(df)} snapshots")
 
+        # If dataset is small, process normally
+        if len(df) <= chunk_size:
+            return self._build_features_internal(df)
+
+        # For large datasets, process in chunks by symbol
+        logger.info(f"Large dataset detected. Processing in chunks...")
+
         df = df.copy()
 
         # Ensure we have a datetime column
@@ -60,6 +68,39 @@ class FeatureBuilder:
             df['dt'] = pd.to_datetime(df['timestamp'])
         elif 'dt' not in df.columns:
             raise ValueError("DataFrame must have 'timestamp' or 'dt' column")
+
+        # Sort by symbol and time
+        df = df.sort_values(['symbol', 'dt']).reset_index(drop=True)
+
+        # Process by groups of symbols to keep contracts together
+        symbols = df['symbol'].unique()
+        total_symbols = len(symbols)
+        processed_dfs = []
+
+        # Process symbols in batches
+        batch_size = max(1, chunk_size // 20)  # Assume ~20 snapshots per symbol
+        for i in range(0, total_symbols, batch_size):
+            batch_symbols = symbols[i:i+batch_size]
+            batch_df = df[df['symbol'].isin(batch_symbols)].copy()
+
+            logger.info(f"Processing symbols {i+1}-{min(i+batch_size, total_symbols)} of {total_symbols} ({len(batch_df)} rows)")
+
+            batch_df = self._build_features_internal(batch_df)
+            processed_dfs.append(batch_df)
+
+        logger.info("Combining processed chunks...")
+        result_df = pd.concat(processed_dfs, ignore_index=True)
+
+        logger.info(f"Feature building complete. Total features: {len(result_df.columns)}")
+        return result_df
+
+    def _build_features_internal(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Internal method to build features (called per chunk)."""
+        # Ensure we have a datetime column
+        if 'timestamp' in df.columns and df['timestamp'].dtype == 'object':
+            df['dt'] = pd.to_datetime(df['timestamp'])
+        elif 'dt' not in df.columns:
+            df['dt'] = pd.to_datetime(df['timestamp'])
 
         # Sort by symbol and time to ensure proper ordering
         df = df.sort_values(['symbol', 'dt']).reset_index(drop=True)
@@ -77,11 +118,13 @@ class FeatureBuilder:
         if self.feature_config.compute_cross_sectional:
             df = self._add_cross_sectional_features(df)
 
-        logger.info(f"Feature building complete. Total features: {len(df.columns)}")
         return df
 
     def _add_static_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add static snapshot features."""
+        # Fill missing spot_price with strike (reasonable approximation)
+        df['spot_price'] = df['spot_price'].fillna(df['strike'])
+
         # Moneyness features
         df['moneyness'] = (df['spot_price'] - df['strike']) / df['strike']
         df['log_moneyness'] = np.log(df['spot_price'] / df['strike'])
@@ -105,20 +148,27 @@ class FeatureBuilder:
         return df
 
     def _add_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add time-based features."""
-        def encode_row_time(row):
-            dt = row['dt'] if isinstance(row['dt'], pd.Timestamp) else parse_timestamp(str(row['dt']))
-            mins_since_open, sin_time, cos_time = encode_time_of_day(dt.to_pydatetime())
-            return pd.Series({
-                'minutes_since_open': mins_since_open,
-                'sin_time_of_day': sin_time,
-                'cos_time_of_day': cos_time,
-                'hour': dt.hour,
-                'minute': dt.minute,
-            })
+        """Add time-based features (optimized for large datasets)."""
+        # Ensure dt column is datetime
+        if 'dt' not in df.columns:
+            df['dt'] = pd.to_datetime(df['timestamp'])
+        elif df['dt'].dtype == 'object':
+            df['dt'] = pd.to_datetime(df['dt'])
 
-        time_features = df.apply(encode_row_time, axis=1)
-        df = pd.concat([df, time_features], axis=1)
+        # Extract hour and minute (vectorized)
+        df['hour'] = df['dt'].dt.hour
+        df['minute'] = df['dt'].dt.minute
+
+        # Calculate minutes since market open (9:15 AM)
+        market_open_hour = 9
+        market_open_minute = 15
+        df['minutes_since_open'] = (df['hour'] - market_open_hour) * 60 + (df['minute'] - market_open_minute)
+
+        # Cyclical encoding (vectorized)
+        total_market_minutes = 375.0  # 6 hours 15 minutes
+        angle = (df['minutes_since_open'] / total_market_minutes) * 2 * np.pi
+        df['sin_time_of_day'] = np.sin(angle)
+        df['cos_time_of_day'] = np.cos(angle)
 
         return df
 
