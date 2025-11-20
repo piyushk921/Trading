@@ -64,6 +64,17 @@ def analyze_json_file(file_path):
                 elif isinstance(sample_data, dict):
                     print(f"      Keys: {list(sample_data.keys())[:10]}")
 
+                    # If all_history exists, show its structure
+                    if 'all_history' in sample_data:
+                        history = sample_data['all_history']
+                        print(f"      all_history type: {type(history)}")
+                        if isinstance(history, list):
+                            print(f"      all_history length: {len(history)}")
+                            if len(history) > 0:
+                                print(f"      First history item: {history[0]}")
+                        elif isinstance(history, dict):
+                            print(f"      all_history keys: {list(history.keys())[:10]}")
+
             all_records = []
             for contract_key in data.keys():
                 contract_data = data[contract_key]
@@ -76,9 +87,23 @@ def analyze_json_file(file_path):
                             snapshot['contract'] = contract_key
                             all_records.append(snapshot)
                 elif isinstance(contract_data, dict):
-                    # Single snapshot as dict
-                    contract_data['contract'] = contract_key
-                    all_records.append(contract_data)
+                    # Check if this dict contains timeseries data in nested fields
+                    if 'all_history' in contract_data:
+                        # Extract the actual timeseries from all_history
+                        history = contract_data['all_history']
+                        if isinstance(history, list):
+                            for snapshot in history:
+                                if isinstance(snapshot, dict):
+                                    snapshot['contract'] = contract_key
+                                    all_records.append(snapshot)
+                        elif isinstance(history, dict):
+                            # Single snapshot
+                            history['contract'] = contract_key
+                            all_records.append(history)
+                    else:
+                        # Single snapshot as dict (no nested history)
+                        contract_data['contract'] = contract_key
+                        all_records.append(contract_data)
 
             if all_records:
                 print(f"\n  Flattened {len(all_records):,} total records from {len(data)} contracts")
@@ -94,9 +119,11 @@ def analyze_json_file(file_path):
     print("DATAFRAME ANALYSIS")
     print(f"{'='*80}")
     print(f"\nTotal rows: {len(df):,}")
-    print(f"\nColumns: {list(df.columns)}")
-    print(f"\nData types:")
-    print(df.dtypes)
+    print(f"\nColumns ({len(df.columns)}): {list(df.columns)[:20]}")  # Limit to first 20
+    if len(df.columns) > 20:
+        print(f"  ... and {len(df.columns) - 20} more columns")
+    print(f"\nData types (first 20):")
+    print(df.dtypes.head(20))
 
     # Analyze timestamps
     if 'timestamp' in df.columns:
@@ -218,23 +245,35 @@ def analyze_json_file(file_path):
 
 def main():
     """Analyze recent data files."""
-    data_dir = Path("data/raw_last4days")
+    import sys
 
-    if not data_dir.exists():
-        print(f"Directory {data_dir} not found!")
-        return
+    if len(sys.argv) > 1:
+        # Use file path provided as argument
+        file_path = Path(sys.argv[1])
+        if not file_path.exists():
+            print(f"File {file_path} not found!")
+            return
+        analyze_json_file(file_path)
+    else:
+        # Default behavior: look for directory
+        data_dir = Path("data/raw_last4days")
 
-    json_files = sorted(data_dir.glob("*.json"))
+        if not data_dir.exists():
+            print(f"Directory {data_dir} not found!")
+            print(f"Usage: python {sys.argv[0]} <json_file_path>")
+            return
 
-    if not json_files:
-        print(f"No JSON files found in {data_dir}")
-        return
+        json_files = sorted(data_dir.glob("*.json"))
 
-    print(f"Found {len(json_files)} JSON files")
+        if not json_files:
+            print(f"No JSON files found in {data_dir}")
+            return
 
-    # Analyze the most recent file in detail
-    latest_file = json_files[-1]
-    analyze_json_file(latest_file)
+        print(f"Found {len(json_files)} JSON files")
+
+        # Analyze the most recent file in detail
+        latest_file = json_files[-1]
+        analyze_json_file(latest_file)
 
     print(f"\n{'='*80}")
     print("ANALYSIS COMPLETE")
