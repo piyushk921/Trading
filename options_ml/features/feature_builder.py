@@ -137,32 +137,41 @@ class FeatureBuilder:
                 # Free memory immediately
                 del batch_df
 
-            logger.info(f"Saved {len(temp_files)} chunks to disk. Now combining in smaller batches...")
+            logger.info(f"Saved {len(temp_files)} chunks to disk. Now combining pairs iteratively...")
 
-            # Combine chunks in groups to avoid memory issues
-            max_chunks_at_once = 10
-            all_batches = []
+            # Hierarchical merge: combine 2 files at a time to minimize memory
+            current_files = temp_files[:]
+            merge_round = 1
 
-            for batch_idx in range(0, len(temp_files), max_chunks_at_once):
-                batch_files = temp_files[batch_idx:batch_idx + max_chunks_at_once]
-                logger.info(f"Combining batch {batch_idx//max_chunks_at_once + 1} ({len(batch_files)} chunks)...")
+            while len(current_files) > 1:
+                logger.info(f"Merge round {merge_round}: combining {len(current_files)} files...")
+                next_files = []
 
-                batch_dfs = [pd.read_parquet(f) for f in batch_files]
-                combined_batch = pd.concat(batch_dfs, ignore_index=True)
+                for i in range(0, len(current_files), 2):
+                    if i + 1 < len(current_files):
+                        # Combine pair
+                        logger.info(f"  Merging files {i+1} and {i+2} of {len(current_files)}...")
+                        df1 = pd.read_parquet(current_files[i])
+                        df2 = pd.read_parquet(current_files[i + 1])
+                        combined = pd.concat([df1, df2], ignore_index=True)
 
-                # Save intermediate result
-                intermediate_file = os.path.join(temp_dir, f"combined_{batch_idx:06d}.parquet")
-                combined_batch.to_parquet(intermediate_file, index=False)
-                all_batches.append(intermediate_file)
+                        # Save merged result
+                        merged_file = os.path.join(temp_dir, f"merged_r{merge_round}_{i:06d}.parquet")
+                        combined.to_parquet(merged_file, index=False)
+                        next_files.append(merged_file)
 
-                # Free memory
-                del batch_dfs
-                del combined_batch
+                        # Free memory immediately
+                        del df1, df2, combined
+                    else:
+                        # Odd file out, carry forward
+                        next_files.append(current_files[i])
 
-            # Final combination
-            logger.info(f"Final combination of {len(all_batches)} batches...")
-            final_dfs = [pd.read_parquet(f) for f in all_batches]
-            result_df = pd.concat(final_dfs, ignore_index=True)
+                current_files = next_files
+                merge_round += 1
+
+            # Final result is the last remaining file
+            logger.info("Loading final merged result...")
+            result_df = pd.read_parquet(current_files[0])
 
             logger.info(f"Feature building complete. Total features: {len(result_df.columns)}")
             return result_df
@@ -170,14 +179,11 @@ class FeatureBuilder:
         finally:
             # Clean up temporary files
             logger.info("Cleaning up temporary files...")
-            for temp_file in temp_files:
+            import glob
+            # Remove all parquet files in temp directory
+            for temp_file in glob.glob(os.path.join(temp_dir, "*.parquet")):
                 try:
                     os.remove(temp_file)
-                except:
-                    pass
-            for batch_file in all_batches if 'all_batches' in locals() else []:
-                try:
-                    os.remove(batch_file)
                 except:
                     pass
             try:
