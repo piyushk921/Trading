@@ -78,6 +78,17 @@ def main():
         default=None,
         help="Keep top N highest-priced CE and PE options per underlying per day (e.g., 5 for top 5 CE + top 5 PE)"
     )
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=50000,
+        help="Chunk size for processing large datasets (default: 50000, lower = less memory but slower)"
+    )
+    parser.add_argument(
+        "--no-disk",
+        action="store_true",
+        help="Don't save chunks to disk (use for smaller datasets)"
+    )
 
     args = parser.parse_args()
 
@@ -228,8 +239,14 @@ def main():
 
     # Step 3: Build features
     logger.info("\nStep 3: Building features")
+    logger.info(f"Using chunk size: {args.chunk_size} rows")
+    logger.info(f"Disk caching: {'Disabled' if args.no_disk else 'Enabled'}")
     feature_builder = FeatureBuilder(config)
-    df_features = feature_builder.build_features(df_filtered)
+    df_features = feature_builder.build_features(
+        df_filtered,
+        chunk_size=args.chunk_size,
+        use_disk=not args.no_disk
+    )
 
     # Step 4: Build labels
     logger.info("\nStep 4: Building labels")

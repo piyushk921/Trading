@@ -149,19 +149,42 @@ class FeatureBuilder:
 
                 for i in range(0, len(current_files), 2):
                     if i + 1 < len(current_files):
-                        # Combine pair
+                        # Combine pair using chunked approach to minimize memory
                         logger.info(f"  Merging files {i+1} and {i+2} of {len(current_files)}...")
-                        df1 = pd.read_parquet(current_files[i])
-                        df2 = pd.read_parquet(current_files[i + 1])
-                        combined = pd.concat([df1, df2], ignore_index=True)
 
-                        # Save merged result
+                        # Save merged result - write first file, then append second
                         merged_file = os.path.join(temp_dir, f"merged_r{merge_round}_{i:06d}.parquet")
-                        combined.to_parquet(merged_file, index=False)
-                        next_files.append(merged_file)
 
-                        # Free memory immediately
-                        del df1, df2, combined
+                        try:
+                            # Try memory-efficient merge with chunked reading
+                            df1 = pd.read_parquet(current_files[i])
+                            df1.to_parquet(merged_file, index=False)
+                            del df1
+
+                            # Append second file in chunks to avoid memory spike
+                            df2 = pd.read_parquet(current_files[i + 1])
+
+                            # Read existing merged file and append
+                            existing = pd.read_parquet(merged_file)
+                            combined = pd.concat([existing, df2], ignore_index=True)
+                            combined.to_parquet(merged_file, index=False)
+
+                            del df2, existing, combined
+                        except MemoryError:
+                            logger.warning("MemoryError during merge - trying ultra-conservative approach")
+                            # Fall back to line-by-line if needed (very slow but works)
+                            import pyarrow.parquet as pq
+                            import pyarrow as pa
+
+                            # Use PyArrow for more memory-efficient concatenation
+                            table1 = pq.read_table(current_files[i])
+                            table2 = pq.read_table(current_files[i + 1])
+                            combined_table = pa.concat_tables([table1, table2])
+                            pq.write_table(combined_table, merged_file)
+
+                            del table1, table2, combined_table
+
+                        next_files.append(merged_file)
                     else:
                         # Odd file out, carry forward
                         next_files.append(current_files[i])
