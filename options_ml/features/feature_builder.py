@@ -37,13 +37,14 @@ class FeatureBuilder:
         self.config = config or get_config()
         self.feature_config = self.config.features
 
-    def build_features(self, df: pd.DataFrame, chunk_size: int = 100000) -> pd.DataFrame:
+    def build_features(self, df: pd.DataFrame, chunk_size: int = 100000, use_disk: bool = True) -> pd.DataFrame:
         """
         Build complete feature set from a DataFrame of snapshots.
 
         Args:
             df: DataFrame with option snapshots (must have required columns)
             chunk_size: Process data in chunks to avoid memory issues (default: 100k rows)
+            use_disk: Save chunks to disk for very large datasets (default: True)
 
         Returns:
             DataFrame with added feature columns
@@ -70,11 +71,22 @@ class FeatureBuilder:
             raise ValueError("DataFrame must have 'timestamp' or 'dt' column")
 
         # Sort by symbol and time
+        logger.info("Sorting data...")
         df = df.sort_values(['symbol', 'dt']).reset_index(drop=True)
 
         # Process by groups of symbols to keep contracts together
         symbols = df['symbol'].unique()
         total_symbols = len(symbols)
+
+        # For very large datasets, save chunks to disk
+        if use_disk and len(df) > 500000:
+            return self._build_features_with_disk(df, symbols, total_symbols, chunk_size)
+        else:
+            return self._build_features_in_memory(df, symbols, total_symbols, chunk_size)
+
+    def _build_features_in_memory(self, df: pd.DataFrame, symbols: np.ndarray,
+                                   total_symbols: int, chunk_size: int) -> pd.DataFrame:
+        """Build features keeping chunks in memory (for medium datasets)."""
         processed_dfs = []
 
         # Process symbols in batches
@@ -93,6 +105,85 @@ class FeatureBuilder:
 
         logger.info(f"Feature building complete. Total features: {len(result_df.columns)}")
         return result_df
+
+    def _build_features_with_disk(self, df: pd.DataFrame, symbols: np.ndarray,
+                                   total_symbols: int, chunk_size: int) -> pd.DataFrame:
+        """Build features saving chunks to disk (for very large datasets)."""
+        import tempfile
+        import os
+
+        logger.info("Very large dataset - will save chunks to disk to avoid memory issues")
+
+        # Create temporary directory
+        temp_dir = tempfile.mkdtemp()
+        temp_files = []
+
+        try:
+            # Process symbols in batches
+            batch_size = max(1, chunk_size // 20)  # Assume ~20 snapshots per symbol
+            for i in range(0, total_symbols, batch_size):
+                batch_symbols = symbols[i:i+batch_size]
+                batch_df = df[df['symbol'].isin(batch_symbols)].copy()
+
+                logger.info(f"Processing symbols {i+1}-{min(i+batch_size, total_symbols)} of {total_symbols} ({len(batch_df)} rows)")
+
+                batch_df = self._build_features_internal(batch_df)
+
+                # Save to temporary file
+                temp_file = os.path.join(temp_dir, f"chunk_{i:06d}.parquet")
+                batch_df.to_parquet(temp_file, index=False)
+                temp_files.append(temp_file)
+
+                # Free memory immediately
+                del batch_df
+
+            logger.info(f"Saved {len(temp_files)} chunks to disk. Now combining in smaller batches...")
+
+            # Combine chunks in groups to avoid memory issues
+            max_chunks_at_once = 10
+            all_batches = []
+
+            for batch_idx in range(0, len(temp_files), max_chunks_at_once):
+                batch_files = temp_files[batch_idx:batch_idx + max_chunks_at_once]
+                logger.info(f"Combining batch {batch_idx//max_chunks_at_once + 1} ({len(batch_files)} chunks)...")
+
+                batch_dfs = [pd.read_parquet(f) for f in batch_files]
+                combined_batch = pd.concat(batch_dfs, ignore_index=True)
+
+                # Save intermediate result
+                intermediate_file = os.path.join(temp_dir, f"combined_{batch_idx:06d}.parquet")
+                combined_batch.to_parquet(intermediate_file, index=False)
+                all_batches.append(intermediate_file)
+
+                # Free memory
+                del batch_dfs
+                del combined_batch
+
+            # Final combination
+            logger.info(f"Final combination of {len(all_batches)} batches...")
+            final_dfs = [pd.read_parquet(f) for f in all_batches]
+            result_df = pd.concat(final_dfs, ignore_index=True)
+
+            logger.info(f"Feature building complete. Total features: {len(result_df.columns)}")
+            return result_df
+
+        finally:
+            # Clean up temporary files
+            logger.info("Cleaning up temporary files...")
+            for temp_file in temp_files:
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+            for batch_file in all_batches if 'all_batches' in locals() else []:
+                try:
+                    os.remove(batch_file)
+                except:
+                    pass
+            try:
+                os.rmdir(temp_dir)
+            except:
+                pass
 
     def _build_features_internal(self, df: pd.DataFrame) -> pd.DataFrame:
         """Internal method to build features (called per chunk)."""
