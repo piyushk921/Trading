@@ -72,6 +72,12 @@ def main():
         default=None,
         help="Keep only strikes within moneyness threshold (e.g., 0.05 for ±5%%)"
     )
+    parser.add_argument(
+        "--filter-top-priced",
+        type=int,
+        default=None,
+        help="Keep top N highest-priced CE and PE options per underlying per day (e.g., 5 for top 5 CE + top 5 PE)"
+    )
 
     args = parser.parse_args()
 
@@ -101,6 +107,8 @@ def main():
         logger.info(f"ATM Filter: Keep strikes within ±{args.filter_moneyness*100:.0f}% moneyness")
     elif args.filter_atm:
         logger.info(f"ATM Filter: Keep top {args.filter_atm} strikes above/below ATM")
+    elif args.filter_top_priced:
+        logger.info(f"Price Filter: Keep top {args.filter_top_priced} highest-priced CE and PE options per day")
 
     # Step 1: Load raw JSON files
     logger.info("\nStep 1: Loading raw JSON files")
@@ -135,7 +143,7 @@ def main():
     )
 
     # Step 2.5: Filter by moneyness (ATM strikes only)
-    if args.filter_moneyness or args.filter_atm:
+    if args.filter_moneyness or args.filter_atm or args.filter_top_priced:
         logger.info("\nStep 2.5: Filtering by moneyness (keeping only ATM and near-ATM strikes)")
         before_filter = len(df_filtered)
 
@@ -171,6 +179,48 @@ def main():
             if filtered_dfs:
                 df_filtered = pd.concat(filtered_dfs, ignore_index=True)
                 logger.info(f"Kept top {args.filter_atm} strikes above and below ATM per underlying")
+
+        elif args.filter_top_priced:
+            # Filter by keeping top N highest-priced CE and PE options per underlying per day
+            import numpy as np
+
+            # Extract date from timestamp
+            df_filtered['date'] = pd.to_datetime(df_filtered['timestamp']).dt.date
+
+            # Track selected strikes
+            selected_strikes = set()
+
+            # Group by underlying and date
+            for (underlying, date), day_group in df_filtered.groupby(['underlying', 'date']):
+                # Find the first timestamp of the day (first fetch)
+                first_timestamp = day_group['timestamp'].min()
+                first_fetch = day_group[day_group['timestamp'] == first_timestamp]
+
+                # Split into CE and PE options
+                ce_options = first_fetch[first_fetch['option_type'] == 'CE']
+                pe_options = first_fetch[first_fetch['option_type'] == 'PE']
+
+                # Get top N highest-priced CE options
+                if len(ce_options) > 0:
+                    top_ce = ce_options.nlargest(args.filter_top_priced, 'price')
+                    for strike in top_ce['strike'].unique():
+                        selected_strikes.add((underlying, date, strike, 'CE'))
+
+                # Get top N highest-priced PE options
+                if len(pe_options) > 0:
+                    top_pe = pe_options.nlargest(args.filter_top_priced, 'price')
+                    for strike in top_pe['strike'].unique():
+                        selected_strikes.add((underlying, date, strike, 'PE'))
+
+            # Filter to keep only selected strikes for the entire day
+            def is_selected(row):
+                return (row['underlying'], row['date'], row['strike'], row['option_type']) in selected_strikes
+
+            df_filtered['selected'] = df_filtered.apply(is_selected, axis=1)
+            df_filtered = df_filtered[df_filtered['selected']].drop(['selected', 'date'], axis=1).copy()
+
+            logger.info(f"Kept top {args.filter_top_priced} highest-priced CE and PE options per underlying per day")
+            logger.info(f"Total unique strikes selected: {len(selected_strikes)}")
 
         after_filter = len(df_filtered)
         logger.info(f"Filtered from {before_filter:,} to {after_filter:,} snapshots ({(after_filter/before_filter)*100:.1f}% kept)")
