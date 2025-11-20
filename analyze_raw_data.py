@@ -34,13 +34,57 @@ def analyze_json_file(file_path):
 
     elif isinstance(data, dict):
         print(f"  Keys: {list(data.keys())}")
-        # Try to find the actual data
+
+        # Try to find the actual data - could be nested lists
         for key in data.keys():
             if isinstance(data[key], list):
                 print(f"\n  '{key}' contains {len(data[key])} records")
                 if len(data[key]) > 0:
                     df = pd.DataFrame(data[key])
                     break
+
+        # If no lists found, the dict itself might be contract -> timeseries mapping
+        # Example: {"HDFCBANK_1000.0_CE": [...], "HDFCBANK_1000.0_PE": [...]}
+        if 'df' not in locals():
+            print(f"\n  Detected contract->timeseries structure")
+            print(f"  Total contracts: {len(data)}")
+
+            # Sample a few contracts to understand structure
+            sample_keys = list(data.keys())[:3]
+            print(f"\n  Examining sample contracts:")
+
+            for sample_key in sample_keys:
+                sample_data = data[sample_key]
+                print(f"\n    {sample_key}:")
+                print(f"      Type: {type(sample_data)}")
+                if isinstance(sample_data, list):
+                    print(f"      Length: {len(sample_data)}")
+                    if len(sample_data) > 0:
+                        print(f"      First item: {sample_data[0]}")
+                elif isinstance(sample_data, dict):
+                    print(f"      Keys: {list(sample_data.keys())[:10]}")
+
+            all_records = []
+            for contract_key in data.keys():
+                contract_data = data[contract_key]
+
+                if isinstance(contract_data, list):
+                    # Each item in the list is a snapshot
+                    for snapshot in contract_data:
+                        if isinstance(snapshot, dict):
+                            # Add the contract identifier to each record
+                            snapshot['contract'] = contract_key
+                            all_records.append(snapshot)
+                elif isinstance(contract_data, dict):
+                    # Single snapshot as dict
+                    contract_data['contract'] = contract_key
+                    all_records.append(contract_data)
+
+            if all_records:
+                print(f"\n  Flattened {len(all_records):,} total records from {len(data)} contracts")
+                df = pd.DataFrame(all_records)
+            else:
+                print("\n  Could not extract records from contract data")
 
     if 'df' not in locals():
         print("Could not parse data into DataFrame")
@@ -111,13 +155,24 @@ def analyze_json_file(file_path):
         print(df['underlying'].value_counts().head(10))
 
     # Most important: Analyze actual price movements
-    if 'symbol' in df.columns and 'price' in df.columns and 'timestamp' in df.columns:
+    contract_field = 'contract' if 'contract' in df.columns else 'symbol'
+    price_field = None
+
+    # Find the price field
+    for possible_price in ['ltp', 'close', 'last_price', 'price']:
+        if possible_price in df.columns:
+            price_field = possible_price
+            break
+
+    if contract_field in df.columns and price_field and 'timestamp' in df.columns:
         print(f"\n{'='*80}")
         print("PRICE MOVEMENT ANALYSIS (Critical!)")
         print(f"{'='*80}")
+        print(f"Using contract field: {contract_field}")
+        print(f"Using price field: {price_field}")
 
         # Pick a few random contracts and analyze their intraday moves
-        sample_symbols = df['symbol'].value_counts().head(20).index.tolist()
+        sample_symbols = df[contract_field].value_counts().head(20).index.tolist()
 
         movements_1_5x = 0
         movements_2x = 0
@@ -126,13 +181,13 @@ def analyze_json_file(file_path):
         print(f"\nAnalyzing {len(sample_symbols)} most active contracts...")
 
         for symbol in sample_symbols[:20]:  # Analyze top 20
-            symbol_df = df[df['symbol'] == symbol].sort_values('dt')
+            symbol_df = df[df[contract_field] == symbol].sort_values('dt')
 
             if len(symbol_df) < 2:
                 continue
 
             total_contracts += 1
-            prices = symbol_df['price'].values
+            prices = symbol_df[price_field].values
 
             # Check each snapshot: did price go 1.5x or 2x from this point?
             for i in range(len(prices) - 1):
