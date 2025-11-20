@@ -80,14 +80,16 @@ class LabelConfig:
     """Labeling parameters for target variable."""
 
     # Target multiplier (2.0 means 2x, 1.5 means 1.5x, 1.3 means 1.3x)
-    # Changed from 2.0 to 1.5 because 2x moves are extremely rare (only 1 in 275k records)
-    # 1.5x (50% gain) is more realistic for intraday options trading
-    target_multiplier: float = 1.5
+    # Set to 2.0 for 100% profit target - targeting high-quality manual trades (~10 per day)
+    # While 2x moves are selective (1.04% positive rate), they provide maximum returns
+    # Perfect for manual trading strategy with fewer but higher quality signals
+    target_multiplier: float = 2.0
 
     # Lookahead horizon in minutes (None = end of day)
-    # Changed from None to 60 to focus on near-term moves and avoid stale signals
-    # Options can move 1.5x within 60 minutes, especially near the money
-    horizon_minutes: Optional[int] = 60
+    # Set to None for EOD horizon - convenient for manual end-of-day exits
+    # Allows options to reach 2x target by market close
+    # Combined with 2.0x target: 1.04% positive rate (1,227 samples from 118k)
+    horizon_minutes: Optional[int] = None
 
     # Alternative horizons for multi-model training
     alternative_horizons: List[int] = field(default_factory=lambda: [30, 60, 120, 240])
@@ -138,8 +140,9 @@ class SignalConfig:
     """Signal generation and filtering parameters."""
 
     # Probability threshold for signal
-    # Reduced from 0.7 to 0.6 since we're targeting 1.5x instead of 2x
-    prob_threshold: float = 0.6
+    # Set to 0.7 for 2.0x target to ensure high-quality signals
+    # Higher threshold filters for best opportunities with 100% profit potential
+    prob_threshold: float = 0.7
 
     # Alternative thresholds for evaluation
     evaluation_thresholds: List[float] = field(default_factory=lambda: [
@@ -175,7 +178,7 @@ class BacktestConfig:
 
     # Risk management
     stop_loss_pct: float = -40.0  # Negative percentage
-    take_profit_multiplier: float = 1.5  # Same as target (changed from 2.0 to 1.5)
+    take_profit_multiplier: float = 2.0  # Same as target - 100% profit exit
 
     # Holding period
     max_holding_minutes: Optional[int] = None  # None = until EOD
