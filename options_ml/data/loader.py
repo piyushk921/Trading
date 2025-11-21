@@ -58,8 +58,9 @@ def load_option_chain_from_json(
 def flatten_option_chain_to_dataframe(raw_data: dict) -> pd.DataFrame:
     """
     Convert raw contract->timeseries structure to a flat DataFrame for ML.
-    This corrected version mirrors the logic from `verify_label_improvements.py`
-    to ensure data integrity.
+    This version correctly extracts metadata from the contract's data, not its name,
+    and uses the contract name as the unique symbol, mirroring the robust logic
+    from the verification script.
 
     Args:
         raw_data: The raw JSON data as a dictionary.
@@ -72,26 +73,28 @@ def flatten_option_chain_to_dataframe(raw_data: dict) -> pd.DataFrame:
     skipped_contracts = 0
 
     for contract_name, contract_data in raw_data.items():
-        # Ensure contract_data is a dictionary and has 'all_history'
         if not isinstance(contract_data, dict):
+            skipped_contracts += 1
             continue
+
+        # Get metadata from the contract data itself. This is robust.
+        # The main script requires these fields for filtering and features.
+        underlying = contract_data.get('underlying')
+        strike = contract_data.get('strike')
+        option_type = contract_data.get('option_type')
+        expiry = contract_data.get('expiry')
         all_history = contract_data.get('all_history', [])
 
-        # Extract contract details from the name, skipping malformed names
-        try:
-            parts = contract_name.split('_')
-            if len(parts) < 4:
-                skipped_contracts += 1
-                continue
-            underlying, expiry, strike, option_type = parts[0], parts[1], float(parts[2]), parts[3]
-        except (ValueError, IndexError):
-            # This will catch errors from float() conversion or if parts are missing
+        # If essential data is missing, we cannot process this contract.
+        if not all([underlying, strike, option_type, expiry, all_history]):
             skipped_contracts += 1
             continue
 
         for snapshot in all_history:
             record = snapshot.copy()
+            # Use the full, unique contract name as the symbol
             record['symbol'] = contract_name
+            # Add the metadata to each snapshot record
             record['underlying'] = underlying
             record['strike'] = strike
             record['option_type'] = option_type
@@ -103,7 +106,7 @@ def flatten_option_chain_to_dataframe(raw_data: dict) -> pd.DataFrame:
         df['dt'] = pd.to_datetime(df['timestamp'])
 
     if skipped_contracts > 0:
-        logger.warning(f"Skipped {skipped_contracts} malformed or invalid contract names during loading.")
+        logger.warning(f"Skipped {skipped_contracts} contracts with missing or invalid data during loading.")
 
     logger.info(f"Created DataFrame with {len(df)} rows")
     return df
