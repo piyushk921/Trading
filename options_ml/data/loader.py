@@ -55,32 +55,44 @@ def load_option_chain_from_json(
     return chain_data
 
 
-def flatten_option_chain_to_dataframe(chain_data: OptionChainData) -> pd.DataFrame:
+def flatten_option_chain_to_dataframe(raw_data: dict) -> pd.DataFrame:
     """
-    Convert option chain data to flat DataFrame for ML.
+    Convert raw contract->timeseries structure to a flat DataFrame for ML.
+    This corrected version mirrors the logic from `verify_label_improvements.py`
+    to ensure data integrity.
 
     Args:
-        chain_data: OptionChainData object
+        raw_data: The raw JSON data as a dictionary.
 
     Returns:
-        DataFrame with one row per snapshot
+        DataFrame with one row per snapshot.
     """
-    logger.info("Flattening option chain to DataFrame")
+    logger.info("Flattening raw data to DataFrame")
+    all_records = []
 
-    rows = []
-    for symbol, contract in chain_data.contracts.items():
-        for snapshot in contract.all_history:
-            row = {
-                'symbol': symbol,
-                'underlying': contract.underlying,
-                'strike': contract.strike,
-                'option_type': contract.option_type,
-                'expiry': contract.expiry,
-                **snapshot.to_dict()
-            }
-            rows.append(row)
+    for contract_name, contract_data in raw_data.items():
+        # Ensure contract_data is a dictionary and has 'all_history'
+        if not isinstance(contract_data, dict):
+            continue
+        all_history = contract_data.get('all_history', [])
 
-    df = pd.DataFrame(rows)
+        # Extract contract details from the name
+        parts = contract_name.split('_')
+        underlying, expiry, strike, option_type = parts[0], parts[1], float(parts[2]), parts[3]
+
+        for snapshot in all_history:
+            record = snapshot.copy()
+            record['symbol'] = contract_name
+            record['underlying'] = underlying
+            record['strike'] = strike
+            record['option_type'] = option_type
+            record['expiry'] = expiry
+            all_records.append(record)
+
+    df = pd.DataFrame(all_records)
+    if 'timestamp' in df.columns:
+        df['dt'] = pd.to_datetime(df['timestamp'])
+
     logger.info(f"Created DataFrame with {len(df)} rows")
     return df
 
@@ -106,8 +118,10 @@ def load_multiple_json_files(
             # Extract date from filename if possible
             date = Path(filepath).stem.split('_')[-1] if '_' in Path(filepath).stem else None
 
-            chain_data = load_option_chain_from_json(filepath, date=date)
-            df = flatten_option_chain_to_dataframe(chain_data)
+            # Load the raw JSON data directly
+            raw_data = load_json_data(filepath)
+            # Use the corrected flattening function
+            df = flatten_option_chain_to_dataframe(raw_data)
             df['source_file'] = filepath
 
             if date:

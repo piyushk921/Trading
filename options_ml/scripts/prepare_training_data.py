@@ -274,8 +274,9 @@ def main():
     # Step 5: Remove rows with NaN labels (can't be used for training)
     logger.info("\nStep 5: Cleaning data")
     before_clean = len(df_labeled)
-    df_clean = df_labeled.dropna(subset=['label_2x'])
-    after_clean = len(df_clean)
+    df_labeled.dropna(subset=['label_2x'], inplace=True)
+    after_clean = len(df_labeled)
+    df_clean = df_labeled  # Rename for clarity in subsequent steps
     logger.info(f"Removed {before_clean - after_clean} rows with missing labels")
 
     # Step 6: Save processed data
