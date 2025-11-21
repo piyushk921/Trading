@@ -69,6 +69,7 @@ def flatten_option_chain_to_dataframe(raw_data: dict) -> pd.DataFrame:
     """
     logger.info("Flattening raw data to DataFrame")
     all_records = []
+    skipped_contracts = 0
 
     for contract_name, contract_data in raw_data.items():
         # Ensure contract_data is a dictionary and has 'all_history'
@@ -76,9 +77,17 @@ def flatten_option_chain_to_dataframe(raw_data: dict) -> pd.DataFrame:
             continue
         all_history = contract_data.get('all_history', [])
 
-        # Extract contract details from the name
-        parts = contract_name.split('_')
-        underlying, expiry, strike, option_type = parts[0], parts[1], float(parts[2]), parts[3]
+        # Extract contract details from the name, skipping malformed names
+        try:
+            parts = contract_name.split('_')
+            if len(parts) < 4:
+                skipped_contracts += 1
+                continue
+            underlying, expiry, strike, option_type = parts[0], parts[1], float(parts[2]), parts[3]
+        except (ValueError, IndexError):
+            # This will catch errors from float() conversion or if parts are missing
+            skipped_contracts += 1
+            continue
 
         for snapshot in all_history:
             record = snapshot.copy()
@@ -92,6 +101,9 @@ def flatten_option_chain_to_dataframe(raw_data: dict) -> pd.DataFrame:
     df = pd.DataFrame(all_records)
     if 'timestamp' in df.columns:
         df['dt'] = pd.to_datetime(df['timestamp'])
+
+    if skipped_contracts > 0:
+        logger.warning(f"Skipped {skipped_contracts} malformed or invalid contract names during loading.")
 
     logger.info(f"Created DataFrame with {len(df)} rows")
     return df
