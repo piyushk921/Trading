@@ -36,48 +36,59 @@ class LabelBuilder:
 
     def build_labels(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Build labels for all snapshots in DataFrame.
+        Build labels for all snapshots in a memory-efficient way. This function
+        processes data in small chunks (per contract per day), labels and cleans
+        each chunk, and then combines only the clean data at the end.
 
         Args:
-            df: DataFrame with option snapshots (must have 'symbol', 'price', 'timestamp'/'dt')
+            df: DataFrame with option snapshots.
 
         Returns:
-            DataFrame with added label columns:
-                - label_2x: Binary label (1 if 2x achieved, 0 otherwise)
-                - time_to_2x_minutes: Minutes until 2x (NaN if never achieved)
-                - max_future_return: Maximum future return within horizon
+            A clean DataFrame with labels, containing no NaN label rows.
         """
-        logger.info(f"Building labels for {len(df)} snapshots")
+        logger.info(f"Building labels for {len(df)} snapshots using memory-efficient method...")
 
-        df = df.copy()
+        if df.empty:
+            return df
 
-        # Ensure we have datetime
+        # Ensure we have datetime and a date column for daily grouping
         if 'dt' not in df.columns:
             df['dt'] = pd.to_datetime(df['timestamp'])
+        if 'date' not in df.columns:
+            df['date'] = df['dt'].dt.date
 
-        # Sort by symbol and time
-        df = df.sort_values(['symbol', 'dt']).reset_index(drop=True)
+        clean_labeled_groups = []
+        grouped = df.groupby(['symbol', 'date'])
+        num_groups = len(grouped)
+        logger.info(f"Processing {num_groups} contract-day groups for labeling...")
 
-        # Initialize label columns
-        df['label_2x'] = 0
-        df['time_to_2x_minutes'] = np.nan
-        df['max_future_return'] = np.nan
+        for i, ((symbol, date), group) in enumerate(grouped):
+            if (i + 1) % 10000 == 0:
+                logger.info(f"  Processed {i+1}/{num_groups} groups...")
 
-        # Process each contract separately
-        for symbol in df['symbol'].unique():
-            symbol_mask = df['symbol'] == symbol
-            symbol_df = df[symbol_mask].copy()
+            sorted_group = group.sort_values('dt')
+            labels = self._build_labels_for_contract(sorted_group)
 
-            # Build labels for this contract
-            labels = self._build_labels_for_contract(symbol_df)
+            # Combine the original data with its new labels
+            labeled_group = sorted_group.join(labels)
 
-            # Assign back to main df
-            df.loc[symbol_mask, 'label_2x'] = labels['label_2x'].values
-            df.loc[symbol_mask, 'time_to_2x_minutes'] = labels['time_to_2x_minutes'].values
-            df.loc[symbol_mask, 'max_future_return'] = labels['max_future_return'].values
+            # Drop rows with NaN labels from this small group (very efficient)
+            labeled_group.dropna(subset=['label_2x'], inplace=True)
 
-        positive_count = df['label_2x'].sum()
-        total_count = len(df)
+            if not labeled_group.empty:
+                clean_labeled_groups.append(labeled_group)
+
+        logger.info(f"Finished processing all {num_groups} groups.")
+
+        if not clean_labeled_groups:
+            logger.warning("No rows remained after labeling and cleaning. Returning empty DataFrame.")
+            return pd.DataFrame(columns=df.columns.tolist() + ['label_2x', 'time_to_2x_minutes', 'max_future_return'])
+
+        logger.info(f"Combining {len(clean_labeled_groups)} cleaned groups into the final DataFrame...")
+        final_df = pd.concat(clean_labeled_groups, ignore_index=True)
+
+        positive_count = final_df['label_2x'].sum()
+        total_count = len(final_df)
         positive_rate = positive_count / total_count * 100 if total_count > 0 else 0
 
         logger.info(
