@@ -69,6 +69,12 @@ def main():
         default=0.2,
         help="Proportion of the dataset to use for validation (default: 0.2 for 20%)."
     )
+    parser.add_argument(
+        "--output-model-file",
+        type=str,
+        default="model.json",
+        help="Path to save the trained model file (default: model.json)."
+    )
     args = parser.parse_args()
 
     logger.info("=" * 80)
@@ -141,6 +147,11 @@ def main():
     report = classification_report(y_val, y_pred, target_names=['No 2x', 'Achieved 2x'])
     print(report)
     logger.info("\n" + report)
+
+    # Step 6: Save the trained model
+    logger.info("Step 6: Saving the trained model")
+    model.save_model(args.output_model_file)
+    logger.info(f"Model saved successfully to {args.output_model_file}")
 
     logger.info("=" * 80)
     logger.info("\nDONE: Model training and evaluation complete!")
