@@ -1,128 +1,142 @@
 #!/usr/bin/env python3
 """
-Train ML model for option 2x prediction.
+Train a machine learning model to predict 2x option price increases.
 
 This script:
-1. Loads prepared training data
-2. Splits data by time
-3. Trains model with proper validation
-4. Saves trained model and artifacts
+1. Loads the prepared training data from a Parquet file.
+2. Defines the feature set to be used for training.
+3. Splits the data into training and validation sets.
+4. Trains an XGBoost classifier model.
+5. Evaluates the model on the validation set and prints a classification report.
 """
 
 import argparse
 import sys
 from pathlib import Path
+import pandas as pd
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add parent directory to path to allow for package imports
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from options_ml.data.loader import load_training_data
-from options_ml.modeling.train import train_model
-from options_ml.config import Config, load_config
 from options_ml.utils.logging_utils import setup_logger
 
-logger = setup_logger(__name__, log_file="logs/training.log")
+logger = setup_logger(__name__, log_file="logs/train_model.log")
 
+def get_feature_names(df: pd.DataFrame) -> list[str]:
+    """
+    Get the list of feature names from the DataFrame.
+
+    This excludes identifier columns, metadata, and the label itself.
+
+    Args:
+        df: The input DataFrame.
+
+    Returns:
+        A list of strings with the column names to be used as features.
+    """
+    logger.info("Identifying feature columns...")
+
+    # Columns to exclude from the feature set
+    cols_to_exclude = [
+        'symbol', 'timestamp', 'dt', 'date', 'price', 'source_file',
+        'label_2x', 'time_to_2x_minutes', 'max_future_return',
+        'underlying', 'strike', 'option_type', 'expiry'
+    ]
+
+    # Get all columns that are not in the exclusion list
+    feature_names = [col for col in df.columns if col not in cols_to_exclude]
+
+    logger.info(f"Identified {len(feature_names)} feature columns.")
+    return feature_names
 
 def main():
-    """Main function."""
-    parser = argparse.ArgumentParser(description="Train option 2x prediction model")
+    """Main function to train and evaluate the model."""
+    parser = argparse.ArgumentParser(description="Train an XGBoost model on processed options data.")
     parser.add_argument(
         "--input-file",
         type=str,
-        default="data/processed/training_data.parquet",
-        help="Path to prepared training data"
+        required=True,
+        help="Path to the processed training data Parquet file."
     )
     parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="models/run_001",
-        help="Output directory for model and artifacts"
+        "--validation-size",
+        type=float,
+        default=0.2,
+        help="Proportion of the dataset to use for validation (default: 0.2 for 20%)."
     )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to config file (optional)"
-    )
-    parser.add_argument(
-        "--model-type",
-        type=str,
-        default="lightgbm",
-        choices=["lightgbm", "xgboost"],
-        help="Model type to train"
-    )
-    parser.add_argument(
-        "--use-validation",
-        action="store_true",
-        default=True,
-        help="Use validation set for early stopping"
-    )
-    parser.add_argument(
-        "--use-sample-weights",
-        action="store_true",
-        help="Use sample weights for class imbalance"
-    )
-
     args = parser.parse_args()
 
-    # Load config
-    if args.config:
-        config = load_config(args.config)
-    else:
-        config = Config()
-
-    # Override model type if specified
-    if args.model_type:
-        config.model.model_type = args.model_type
-
-    # Ensure directories exist
-    config.ensure_directories()
-
     logger.info("=" * 80)
-    logger.info("TRAINING OPTIONS ML MODEL")
+    logger.info("TRAINING PREDICTION MODEL")
     logger.info("=" * 80)
-    logger.info(f"Input file: {args.input_file}")
-    logger.info(f"Output directory: {args.output_dir}")
-    logger.info(f"Model type: {config.model.model_type}")
-    logger.info(f"Use validation: {args.use_validation}")
-    logger.info(f"Use sample weights: {args.use_sample_weights}")
 
-    # Step 1: Load training data
-    logger.info("\nStep 1: Loading training data")
-    if not Path(args.input_file).exists():
-        logger.error(f"Training data file not found: {args.input_file}")
-        logger.info("Please run prepare_training_data.py first")
+    # Step 1: Load the data
+    logger.info(f"Step 1: Loading data from {args.input_file}")
+    try:
+        df = load_training_data(args.input_file)
+    except FileNotFoundError:
+        logger.error(f"Error: Input file not found at {args.input_file}")
         sys.exit(1)
 
-    df = load_training_data(args.input_file)
+    if df.empty:
+        logger.error("The loaded DataFrame is empty. Cannot proceed with training.")
+        sys.exit(1)
 
-    # Step 2: Train model
-    logger.info("\nStep 2: Training model")
-    model, training_info = train_model(
-        df=df,
-        output_dir=args.output_dir,
-        config=config,
-        use_validation=args.use_validation,
-        use_sample_weights=args.use_sample_weights
+    # Step 2: Define features and target
+    logger.info("Step 2: Defining features and target variable")
+    feature_names = get_feature_names(df)
+    X = df[feature_names]
+    y = df['label_2x']
+
+    if X.empty or y.empty:
+        logger.error("Feature set or target variable is empty. Cannot train the model.")
+        sys.exit(1)
+
+    # Step 3: Split data into training and validation sets
+    logger.info(f"Step 3: Splitting data into training and validation sets ({1-args.validation_size:.0%} train / {args.validation_size:.0%} validation)")
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=args.validation_size, random_state=42, stratify=y
+    )
+    logger.info(f"Training set size: {len(X_train)} samples")
+    logger.info(f"Validation set size: {len(X_val)} samples")
+
+    # Step 4: Train the XGBoost model
+    logger.info("Step 4: Training the XGBoost model")
+
+    # Handle class imbalance by calculating scale_pos_weight
+    # This tells the model to pay more attention to the rare positive class
+    scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
+    logger.info(f"Calculated scale_pos_weight for class imbalance: {scale_pos_weight:.2f}")
+
+    model = xgb.XGBClassifier(
+        objective='binary:logistic',
+        eval_metric='logloss',
+        use_label_encoder=False,
+        scale_pos_weight=scale_pos_weight,
+        random_state=42
     )
 
-    # Summary
+    model.fit(X_train, y_train)
+    logger.info("Model training complete.")
+
+    # Step 5: Evaluate the model on the validation set
+    logger.info("Step 5: Evaluating model performance on the validation set")
+    y_pred = model.predict(X_val)
+
     logger.info("\n" + "=" * 80)
-    logger.info("TRAINING SUMMARY")
+    logger.info("MODEL EVALUATION REPORT")
     logger.info("=" * 80)
-    logger.info(f"Model type: {config.model.model_type}")
-    logger.info(f"Training samples: {training_info['train_size']}")
-    logger.info(f"Validation samples: {training_info['val_size']}")
-    logger.info(f"Test samples: {training_info['test_size']}")
-    logger.info(f"Number of features: {training_info['n_features']}")
-    logger.info("\nTest set performance:")
-    for metric, value in training_info['test_metrics'].items():
-        logger.info(f"  {metric}: {value:.4f}")
-    logger.info(f"\nModel saved to: {args.output_dir}/model")
 
-    logger.info("\n✓ Training complete!")
+    report = classification_report(y_val, y_pred, target_names=['No 2x', 'Achieved 2x'])
+    print(report)
+    logger.info("\n" + report)
 
+    logger.info("=" * 80)
+    logger.info("\nDONE: Model training and evaluation complete!")
 
 if __name__ == "__main__":
     main()

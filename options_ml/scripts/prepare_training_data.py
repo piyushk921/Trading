@@ -282,7 +282,7 @@ def main():
     logger.info(f"Positive samples (2x): {df_clean['label_2x'].sum()} ({df_clean['label_2x'].mean()*100:.2f}%)")
     logger.info(f"Data saved to: {args.output_file}")
 
-    logger.info("\n✓ Data preparation complete!")
+    logger.info("\nDONE: Data preparation complete!")
 
 
 if __name__ == "__main__":
