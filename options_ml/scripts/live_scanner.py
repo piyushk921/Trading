@@ -151,6 +151,9 @@ class LiveFeatureCalculator:
         if 'volume_ma_10min' in latest.columns:
             latest.loc[:, 'volume_spike_ratio'] = latest['volume'] / (latest['volume_ma_10min'] + 1)
 
+        # Fill any NaN values that may have been created during calculation
+        latest.fillna(0, inplace=True)
+
         return latest.iloc[0] # Return as a Series
 
 def main():
