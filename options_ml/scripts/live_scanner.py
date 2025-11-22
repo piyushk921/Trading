@@ -131,22 +131,25 @@ class LiveFeatureCalculator:
     def _calculate_features_for_group(self, group: pd.DataFrame) -> pd.Series:
         """Calculates features for the most recent row in a group."""
         group = group.set_index('timestamp').sort_index()
-        latest = group.iloc[-1:] # Keep it as a DataFrame
+
+        # Create an explicit copy to avoid SettingWithCopyWarning
+        latest = group.iloc[-1:].copy()
 
         # --- This logic should mirror the feature engineering scripts ---
         # Price momentum (rate of change)
         for window in ['5min', '15min']:
-            latest[f'price_roc_{window}'] = group['price'].pct_change(freq=window).iloc[-1]
+            # Use .loc to ensure we are setting values on the DataFrame directly
+            latest.loc[:, f'price_roc_{window}'] = group['price'].pct_change(freq=window).iloc[-1]
 
         # Moving averages
         for col in ['price', 'volume', 'iv', 'delta']:
             if col in group.columns:
                 for window in ['10min']:
-                    latest[f'{col}_ma_{window}'] = group[col].rolling(window).mean().iloc[-1]
+                    latest.loc[:, f'{col}_ma_{window}'] = group[col].rolling(window).mean().iloc[-1]
 
         # Volume spike
         if 'volume_ma_10min' in latest.columns:
-            latest['volume_spike_ratio'] = latest['volume'] / (latest['volume_ma_10min'] + 1)
+            latest.loc[:, 'volume_spike_ratio'] = latest['volume'] / (latest['volume_ma_10min'] + 1)
 
         return latest.iloc[0] # Return as a Series
 
@@ -226,11 +229,16 @@ def main():
             features_for_prediction = [col for col in model.feature_names_in_ if col in latest_features_df.columns]
             X_live = latest_features_df[features_for_prediction]
 
-            # Handle missing columns by filling with 0
+            # Handle missing columns by filling with 0 in a single, efficient operation
             missing_cols = set(model.feature_names_in_) - set(X_live.columns)
-            for c in missing_cols:
-                X_live[c] = 0
-            X_live = X_live[model.feature_names_in_] # Ensure order is the same
+            if missing_cols:
+                # Create a DataFrame of zeros for the missing columns
+                missing_df = pd.DataFrame(0, index=X_live.index, columns=list(missing_cols))
+                # Concatenate along the columns axis
+                X_live = pd.concat([X_live, missing_df], axis=1)
+
+            # Ensure the column order matches the model's expectations exactly
+            X_live = X_live[model.feature_names_in_]
 
             if not X_live.empty:
                 probabilities = model.predict_proba(X_live)
