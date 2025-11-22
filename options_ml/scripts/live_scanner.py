@@ -124,7 +124,7 @@ class LiveFeatureCalculator:
         self.history = self.history[self.history['timestamp'] >= cutoff]
 
         # Calculate features for the latest data points
-        latest_features = self.history.groupby('symbol').apply(self._calculate_features_for_group)
+        latest_features = self.history.groupby('symbol').apply(self._calculate_features_for_group, include_groups=False)
 
         return latest_features.reset_index()
 
