@@ -159,17 +159,6 @@ def main():
         min_snapshots=config.data.min_snapshots_per_contract
     )
 
-    # Step 2.1: Pre-filter label verification
-    logger.info("\nStep 2.1: Verifying positive rate on unfiltered data")
-    temp_label_builder = LabelBuilder(config)
-    df_temp_labeled = temp_label_builder.build_labels(df_filtered.copy())
-    pre_filter_positives = df_temp_labeled['label_2x'].sum()
-    pre_filter_total = len(df_temp_labeled)
-    pre_filter_rate = (pre_filter_positives / pre_filter_total * 100) if pre_filter_total > 0 else 0
-    logger.info(f"Pre-filter positive rate ({config.labels.target_multiplier}x @ {config.labels.horizon_minutes or 'EOD'} min): "
-                f"{pre_filter_positives}/{pre_filter_total} ({pre_filter_rate:.2f}%)")
-    del df_temp_labeled  # free up memory
-
     # Step 2.5: Filter by moneyness (ATM strikes only)
     if args.filter_moneyness or args.filter_atm or args.filter_top_priced:
         logger.info("\nStep 2.5: Filtering by moneyness (keeping only ATM and near-ATM strikes)")
@@ -210,42 +199,45 @@ def main():
 
         elif args.filter_top_priced:
             # Filter by keeping top N highest-priced CE and PE options per underlying per day
-            # This is based on the MAX price achieved during the day, not just the opening price.
             import numpy as np
 
             # Extract date from timestamp
             df_filtered['date'] = pd.to_datetime(df_filtered['timestamp']).dt.date
 
-            # Track selected symbols
-            selected_symbols = set()
+            # Track selected strikes
+            selected_strikes = set()
 
             # Group by underlying and date
             for (underlying, date), day_group in df_filtered.groupby(['underlying', 'date']):
-                # Find the max price for each contract during that day
-                contract_max_prices = day_group.groupby('symbol').agg(
-                    max_price=('price', 'max'),
-                    option_type=('option_type', 'first')
-                ).reset_index()
+                # Find the first timestamp of the day (first fetch)
+                first_timestamp = day_group['timestamp'].min()
+                first_fetch = day_group[day_group['timestamp'] == first_timestamp]
 
                 # Split into CE and PE options
-                ce_options = contract_max_prices[contract_max_prices['option_type'] == 'CE']
-                pe_options = contract_max_prices[contract_max_prices['option_type'] == 'PE']
+                ce_options = first_fetch[first_fetch['option_type'] == 'CE']
+                pe_options = first_fetch[first_fetch['option_type'] == 'PE']
 
-                # Get top N highest-priced CE options based on their max price
+                # Get top N highest-priced CE options
                 if len(ce_options) > 0:
-                    top_ce = ce_options.nlargest(args.filter_top_priced, 'max_price')
-                    selected_symbols.update(top_ce['symbol'])
+                    top_ce = ce_options.nlargest(args.filter_top_priced, 'price')
+                    for strike in top_ce['strike'].unique():
+                        selected_strikes.add((underlying, date, strike, 'CE'))
 
-                # Get top N highest-priced PE options based on their max price
+                # Get top N highest-priced PE options
                 if len(pe_options) > 0:
-                    top_pe = pe_options.nlargest(args.filter_top_priced, 'max_price')
-                    selected_symbols.update(top_pe['symbol'])
+                    top_pe = pe_options.nlargest(args.filter_top_priced, 'price')
+                    for strike in top_pe['strike'].unique():
+                        selected_strikes.add((underlying, date, strike, 'PE'))
 
-            # Filter to keep only snapshots from the selected symbols for the entire day
-            df_filtered = df_filtered[df_filtered['symbol'].isin(selected_symbols)].drop(columns=['date']).copy()
+            # Filter to keep only selected strikes for the entire day
+            def is_selected(row):
+                return (row['underlying'], row['date'], row['strike'], row['option_type']) in selected_strikes
 
-            logger.info(f"Kept top {args.filter_top_priced} highest-priced CE and PE options per underlying per day (based on day's max price)")
-            logger.info(f"Total unique contracts selected: {len(selected_symbols)}")
+            df_filtered['selected'] = df_filtered.apply(is_selected, axis=1)
+            df_filtered = df_filtered[df_filtered['selected']].drop(['selected', 'date'], axis=1).copy()
+
+            logger.info(f"Kept top {args.filter_top_priced} highest-priced CE and PE options per underlying per day")
+            logger.info(f"Total unique strikes selected: {len(selected_strikes)}")
 
         after_filter = len(df_filtered)
         logger.info(f"Filtered from {before_filter:,} to {after_filter:,} snapshots ({(after_filter/before_filter)*100:.1f}% kept)")
@@ -266,7 +258,7 @@ def main():
         num_chunks=args.num_chunks
     )
 
-    # Step 4: Build labels
+    # Step 4: Build labels and clean data
     logger.info("\nStep 4: Building labels and cleaning data")
     label_builder = LabelBuilder(config)
     # The new build_labels function is memory-efficient and returns a fully cleaned DataFrame
@@ -290,7 +282,7 @@ def main():
     logger.info(f"Positive samples (2x): {df_clean['label_2x'].sum()} ({df_clean['label_2x'].mean()*100:.2f}%)")
     logger.info(f"Data saved to: {args.output_file}")
 
-    logger.info("\nDONE: Data preparation complete!")
+    logger.info("\n✓ Data preparation complete!")
 
 
 if __name__ == "__main__":

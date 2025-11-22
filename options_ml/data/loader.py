@@ -55,69 +55,32 @@ def load_option_chain_from_json(
     return chain_data
 
 
-def flatten_option_chain_to_dataframe(raw_data: dict, date: str) -> pd.DataFrame:
+def flatten_option_chain_to_dataframe(chain_data: OptionChainData) -> pd.DataFrame:
     """
-    Convert raw contract->timeseries structure to a flat DataFrame for ML.
-    This final version correctly parses the contract name based on the observed
-    data format (UNDERLYING_STRIKE_TYPE) and uses the filename for the expiry date.
+    Convert option chain data to flat DataFrame for ML.
 
     Args:
-        raw_data: The raw JSON data as a dictionary.
-        date: The trading date (from the filename), used as the expiry.
+        chain_data: OptionChainData object
 
     Returns:
-        DataFrame with one row per snapshot.
+        DataFrame with one row per snapshot
     """
-    logger.info("Flattening raw data to DataFrame using final correct logic")
-    all_records = []
-    skipped_contracts = 0
-    expiry_date = pd.to_datetime(date).date() if date else None
+    logger.info("Flattening option chain to DataFrame")
 
-    for contract_name, contract_data in raw_data.items():
-        if not isinstance(contract_data, dict):
-            skipped_contracts += 1
-            continue
+    rows = []
+    for symbol, contract in chain_data.contracts.items():
+        for snapshot in contract.all_history:
+            row = {
+                'symbol': symbol,
+                'underlying': contract.underlying,
+                'strike': contract.strike,
+                'option_type': contract.option_type,
+                'expiry': contract.expiry,
+                **snapshot.to_dict()
+            }
+            rows.append(row)
 
-        all_history = contract_data.get('all_history', [])
-        if not all_history:
-            skipped_contracts += 1
-            continue
-
-        # Correctly parse the contract name based on the observed format.
-        try:
-            parts = contract_name.split('_')
-            if len(parts) < 3:
-                skipped_contracts += 1
-                continue
-
-            option_type = parts[-1]
-            strike = float(parts[-2])
-            underlying = "_".join(parts[:-2])
-
-            if option_type not in ['CE', 'PE']:
-                skipped_contracts += 1
-                continue
-
-        except (ValueError, IndexError):
-            skipped_contracts += 1
-            continue
-
-        for snapshot in all_history:
-            record = snapshot.copy()
-            record['symbol'] = contract_name
-            record['underlying'] = underlying
-            record['strike'] = strike
-            record['option_type'] = option_type
-            record['expiry'] = expiry_date
-            all_records.append(record)
-
-    df = pd.DataFrame(all_records)
-    if 'timestamp' in df.columns:
-        df['dt'] = pd.to_datetime(df['timestamp'])
-
-    if skipped_contracts > 0:
-        logger.warning(f"Skipped {skipped_contracts} contracts with malformed names or missing data.")
-
+    df = pd.DataFrame(rows)
     logger.info(f"Created DataFrame with {len(df)} rows")
     return df
 
@@ -143,10 +106,8 @@ def load_multiple_json_files(
             # Extract date from filename if possible
             date = Path(filepath).stem.split('_')[-1] if '_' in Path(filepath).stem else None
 
-            # Load the raw JSON data directly
-            raw_data = load_json_data(filepath)
-            # Use the corrected flattening function, passing the date
-            df = flatten_option_chain_to_dataframe(raw_data, date=date)
+            chain_data = load_option_chain_from_json(filepath, date=date)
+            df = flatten_option_chain_to_dataframe(chain_data)
             df['source_file'] = filepath
 
             if date:
