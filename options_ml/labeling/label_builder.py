@@ -36,17 +36,14 @@ class LabelBuilder:
 
     def build_labels(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Build labels for all snapshots in DataFrame. This corrected version handles
-        multi-day data by processing each contract for each day independently.
+        Build labels for all snapshots in DataFrame. This final, memory-efficient
+        version avoids sorting the entire DataFrame at once to prevent crashes.
 
         Args:
             df: DataFrame with option snapshots (must have 'symbol', 'price', 'timestamp'/'dt')
 
         Returns:
-            DataFrame with added label columns:
-                - label_2x: Binary label (1 if 2x achieved, 0 otherwise)
-                - time_to_2x_minutes: Minutes until 2x (NaN if never achieved)
-                - max_future_return: Maximum future return within horizon
+            DataFrame with added label columns.
         """
         logger.info(f"Building labels for {len(df)} snapshots")
 
@@ -57,26 +54,33 @@ class LabelBuilder:
             df['dt'] = pd.to_datetime(df['timestamp'])
         df['date'] = df['dt'].dt.date
 
-        # Sort values to ensure correct chronological processing within groups
-        df = df.sort_values(['symbol', 'date', 'dt']).reset_index(drop=True)
-
         # Initialize label columns
         df['label_2x'] = 0
         df['time_to_2x_minutes'] = np.nan
         df['max_future_return'] = np.nan
 
-        # Process each contract for each day separately to avoid multi-day bug
-        all_labels = []
-        for (symbol, date), group in df.groupby(['symbol', 'date']):
-            # Build labels for this specific contract on this specific day
-            labels = self._build_labels_for_contract(group)
-            all_labels.append(labels)
+        # Process each contract-day group individually to be highly memory-efficient.
+        # This avoids a massive sort on the full dataframe.
+        grouped = df.groupby(['symbol', 'date'])
+        num_groups = len(grouped)
+        logger.info(f"Processing {num_groups} contract-day groups for labeling...")
 
-        # Combine all the labeled groups back together
-        if all_labels:
-            combined_labels = pd.concat(all_labels)
-            # Update the main DataFrame using the index from the combined labels
-            df.update(combined_labels)
+        for i, ((symbol, date), group) in enumerate(grouped):
+            if (i + 1) % 1000 == 0:
+                logger.info(f"  Processed {i+1}/{num_groups} groups...")
+
+            # Sort the individual group, which is small and fits in memory
+            sorted_group = group.sort_values('dt')
+
+            # Build labels for this specific, sorted group
+            labels = self._build_labels_for_contract(sorted_group)
+
+            # Update the main dataframe directly to save memory
+            df.loc[labels.index, 'label_2x'] = labels['label_2x']
+            df.loc[labels.index, 'time_to_2x_minutes'] = labels['time_to_2x_minutes']
+            df.loc[labels.index, 'max_future_return'] = labels['max_future_return']
+
+        logger.info(f"Finished processing all {num_groups} groups.")
 
         positive_count = df['label_2x'].sum()
         total_count = len(df)
