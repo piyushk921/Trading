@@ -86,11 +86,17 @@ def main():
         logger.error("The loaded DataFrame is empty. Cannot proceed with training.")
         sys.exit(1)
 
-    # Step 2: Define features and target
-    logger.info("Step 2: Defining features and target variable")
+    # Step 2: Define features and target, and clean the data
+    logger.info("Step 2: Defining features, cleaning data, and setting target variable")
     feature_names = get_feature_names(df)
     X = df[feature_names]
     y = df['label_2x']
+
+    # Clean the data: Replace infinite values with 0
+    # This is a critical step to prevent XGBoost from crashing on invalid inputs.
+    logger.info("Cleaning data by replacing infinite values...")
+    X.replace([np.inf, -np.inf], 0, inplace=True)
+    logger.info("Data cleaning complete.")
 
     if X.empty or y.empty:
         logger.error("Feature set or target variable is empty. Cannot train the model.")
