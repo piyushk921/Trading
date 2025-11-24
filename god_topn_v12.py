@@ -100,6 +100,7 @@ from datetime import datetime, timedelta
 import json
 from flask import Flask, jsonify, render_template_string
 from threading import Thread
+from collections import deque
 import pytz
 import os
 import pandas as pd
@@ -245,6 +246,22 @@ PUT_STOPLOSS_PCT = 5.0
 HOLDING_DAYS = 10
 
 # ============================================================================
+# SUPER_BOT CONFIGURATION (HERO-ZERO)
+# ============================================================================
+SUPER_BOT_HISTORY_SIZE = 6             # Keep ~75 mins of history in RAM
+SUPER_BOT_MIN_PREMIUM = 10.0
+SUPER_BOT_MAX_PREMIUM = 450.0
+SUPER_BOT_FILTER_DELTA_MIN = 0.15      # Deep OTM but movable
+SUPER_BOT_FILTER_DELTA_MAX = 0.35      # Avoid expensive ATM
+SUPER_BOT_FILTER_IV_MAX = 55.0         # Avoid IV Crush risks
+
+# Triggers (The "Ignition")
+SUPER_BOT_REQ_VOL_30M = 100.0          # Volume doubled in 30 mins
+SUPER_BOT_REQ_VOL_60M = 120.0          # Volume trend sustained 60 mins
+SUPER_BOT_REQ_OI_60M = 1.5             # Smart money accumualtion
+SUPER_BOT_REQ_PRICE_STABILITY = -5.0   # Price allowed to dip, but not crash
+
+# ============================================================================
 # GLOBAL DATA
 # ============================================================================
 scanner_running = False
@@ -259,6 +276,10 @@ stock_volume_spikes = []
 option_volume_spikes_oi_increasing = []  # NEW: OI Increasing logic
 option_volume_spikes_oi_decreasing = []  # NEW: OI Decreasing logic
 combined_signals = []
+
+# Super Bot Signals
+super_bot_signals = []
+super_bot_memory = {} # Structure: { "SYMBOL_STRIKE_TYPE": deque([snapshot1, ...]) }
 
 # Tracking
 oi_signal_tracker = {}
@@ -2834,6 +2855,142 @@ def scheduled_3x_training():
             f"Check logs for details."
         )
 
+# ============================================================================
+# SUPER BOT LOGIC (HERO-ZERO)
+# ============================================================================
+
+def analyze_super_bot(symbol, strike, otype, p, v, oi, delta, iv):
+    """
+    Super Bot Logic: Hero-Zero Setup
+    - Monitors Volume & OI changes over 30m and 60m
+    - Filters by Price Stability and Delta
+    """
+    global super_bot_signals, super_bot_memory
+
+    uid = f"{symbol}_{strike}_{otype}"
+    # Use a larger deque to store more history since we will filter by time
+    if uid not in super_bot_memory:
+        # Store enough snapshots to cover >60 minutes.
+        # If cycles are fast (e.g. 1 min), we need 60+ items.
+        # god_topn_v12 cycle time depends on stock list size.
+        # With 180 stocks * 4s = 12 mins per cycle. 6 items covers ~72 mins.
+        # But to be safe and precise with timestamps, we'll increase it to 100.
+        super_bot_memory[uid] = deque(maxlen=100)
+
+    history = super_bot_memory[uid]
+    current_time = get_ist_time()
+    history.append({'p': p, 'v': v, 'oi': oi, 'time': current_time})
+
+    if len(history) < 2: return
+
+    now = history[-1]
+
+    # Find snapshots closest to 30m and 60m ago
+    t_30 = None
+    t_60 = None
+
+    for snap in history:
+        time_diff = (current_time - snap['time']).total_seconds() / 60
+
+        # Look for snapshot around 30 mins ago (25-35 mins)
+        if 25 <= time_diff <= 40:
+            if t_30 is None or abs(time_diff - 30) < abs((current_time - t_30['time']).total_seconds()/60 - 30):
+                t_30 = snap
+
+        # Look for snapshot around 60 mins ago (50-70 mins)
+        if 50 <= time_diff <= 80:
+            if t_60 is None or abs(time_diff - 60) < abs((current_time - t_60['time']).total_seconds()/60 - 60):
+                t_60 = snap
+
+    # Fallback logic if specific timeframes aren't found (e.g., early in the day)
+    # If we don't have 60m history yet, we can't compute 60m change accurately.
+    # Super_Bot logic relied on fixed indices. If we want to mimic that behavior strictly:
+    # strict bot behavior: index -3 is 30m, index 0 (-6) is 60m.
+    # Given the cycle time is likely > 10 mins, index based might be 'okay' but time based is better.
+    # If t_60 is missing, we skip or use oldest? Super_Bot skips if history < 3.
+
+    if t_30 is None:
+        # Try to use oldest if it's at least 20 mins old
+        if len(history) >= 3 and (current_time - history[0]['time']).total_seconds()/60 >= 20:
+             t_30 = history[0]
+        else:
+             return # Not enough data
+
+    if t_60 is None:
+        # If we have valid 30m data but not 60m, we might still want to check 30m triggers?
+        # But the trigger requires both.
+        # We can use t_30 as a proxy for t_60 if we are between 30-60 mins of run time?
+        # No, that would distort the "sustained" volume check.
+        # Let's use the oldest available if it's > 45 mins
+        if (current_time - history[0]['time']).total_seconds()/60 >= 45:
+            t_60 = history[0]
+        else:
+            # If we strictly need 60m change, return.
+            # However, to be responsive early, maybe we accept shorter frames?
+            # The bot code: `if len(history) < 3: return` implies it starts checking early.
+            return
+
+    if t_60['v'] == 0: return
+
+    # --- METRICS ---
+    v_chg_60 = ((now['v'] - t_60['v']) / t_60['v']) * 100
+    v_chg_30 = ((now['v'] - t_30['v']) / t_30['v']) * 100 if t_30['v'] > 0 else 0
+    p_chg_30 = ((now['p'] - t_30['p']) / t_30['p']) * 100 if t_30['p'] > 0 else 0
+
+    oi_chg_60 = 0
+    if t_60['oi'] > 0: oi_chg_60 = ((now['oi'] - t_60['oi']) / t_60['oi']) * 100
+
+    # --- FILTERS ---
+    if p < SUPER_BOT_MIN_PREMIUM or p > SUPER_BOT_MAX_PREMIUM: return
+    if v < 500: return
+    # Super Bot logic only checks CALLs generally, but we pass otype.
+    # The caller should restrict to 'CE' if strictly following Super_Bot, or we check here.
+    if otype != "CE" and otype != "CALL": return
+
+    if not (SUPER_BOT_FILTER_DELTA_MIN <= delta <= SUPER_BOT_FILTER_DELTA_MAX): return
+    if iv > SUPER_BOT_FILTER_IV_MAX: return
+    if p_chg_30 < SUPER_BOT_REQ_PRICE_STABILITY: return
+
+    # --- TRIGGER ---
+    if v_chg_30 >= SUPER_BOT_REQ_VOL_30M and v_chg_60 >= SUPER_BOT_REQ_VOL_60M and oi_chg_60 >= SUPER_BOT_REQ_OI_60M:
+
+        signal_data = {
+            'timestamp': get_ist_time().strftime('%H:%M:%S'),
+            'symbol': symbol,
+            'strike': f"{strike} {otype}",
+            'price': p,
+            'vol_30m': round(v_chg_30),
+            'vol_60m': round(v_chg_60),
+            'oi_chg': round(oi_chg_60, 2),
+            'delta': delta
+        }
+
+        # Avoid duplicate signals in the display list (update existing if present)
+        found = False
+        for i in range(len(super_bot_signals)):
+            if super_bot_signals[i]['symbol'] == symbol and super_bot_signals[i]['strike'] == f"{strike} {otype}":
+                super_bot_signals[i] = signal_data
+                found = True
+                break
+        if not found:
+            super_bot_signals.append(signal_data)
+
+        # Telegram Alert
+        msg = (
+            f"💎 <b>HERO-ZERO SETUP (SUPER BOT)</b>\n"
+            f"Symbol: #{symbol}\n"
+            f"Strike: <b>{strike} {otype}</b>\n"
+            f"----------------------\n"
+            f"📊 30m Vol: +{round(v_chg_30)}%\n"
+            f"📊 60m Vol: +{round(v_chg_60)}%\n"
+            f"📈 60m OI:  +{round(oi_chg_60, 2)}%\n"
+            f"💰 Price: {t_30['p']} ➝ <b>{p}</b>\n"
+            f"----------------------\n"
+            f"Delta: {delta} (Golden Zone)"
+        )
+        send_telegram_message(msg)
+        logger.info(f"💎 SUPER BOT SIGNAL: {symbol} {strike} {otype} | Vol30: {round(v_chg_30)}% | OI: {round(oi_chg_60, 2)}%")
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAIN SCANNER LOOP
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3117,6 +3274,14 @@ def run_scanner():
                                 # Append to history
                                 enhanced_options_data[option_key]['all_history'].append(snapshot)
                                 enhanced_options_data[option_key]['volume_history'].append(snapshot['volume'])
+
+                                # SUPER BOT LOGIC INTEGRATION
+                                try:
+                                    analyze_super_bot(symbol, strike, 'CE',
+                                                     snapshot['price'], snapshot['volume'], snapshot['open_interest'],
+                                                     snapshot['delta'], snapshot['iv'])
+                                except Exception as e:
+                                    logger.error(f"Super Bot Error: {e}")
                             
                             # Process PE (Put) - same logic
                             if "pe" in strike_data and strike_data["pe"]:
@@ -3764,6 +3929,11 @@ def dashboard():
             <h2>⚡🔴 Option Volume Spikes - OI Decreasing</h2>
             <div id="option-signals-decreasing"></div>
         </div>
+
+        <div class="signals-section">
+            <h2>💎 Super Bot Signals (Hero-Zero)</h2>
+            <div id="super-bot-signals"></div>
+        </div>
         
         <!-- NEW IN v9.0: 3X DETECTOR SECTIONS -->
         <div class="signals-section">
@@ -3935,6 +4105,30 @@ def dashboard():
                     </div>
                 `).join('');
             }
+
+            // Update Super Bot Signals
+            const superBotSignals = data.signals.super_bot_signals;
+            const superBotContainer = document.getElementById('super-bot-signals');
+            if (superBotSignals && superBotSignals.length === 0) {
+                superBotContainer.innerHTML = '<div class="no-signals">No Super Bot signals detected</div>';
+            } else if (superBotSignals) {
+                superBotContainer.innerHTML = superBotSignals.slice().reverse().map(signal => `
+                    <div class="signal-card">
+                        <div class="signal-header">
+                            <div class="signal-symbol">${signal.symbol} ${signal.strike}</div>
+                            <div class="signal-badge">HERO-ZERO</div>
+                        </div>
+                        <div class="signal-details">
+                            <div class="detail-item"><strong>Time:</strong> ${signal.timestamp}</div>
+                            <div class="detail-item"><strong>Price:</strong> ₹${signal.price.toFixed(2)}</div>
+                            <div class="detail-item"><strong style="color:#0f0">Vol 30m:</strong> +${signal.vol_30m}%</div>
+                            <div class="detail-item"><strong style="color:#0f0">Vol 60m:</strong> +${signal.vol_60m}%</div>
+                            <div class="detail-item"><strong style="color:#0f0">OI Chg:</strong> +${signal.oi_chg}%</div>
+                            <div class="detail-item"><strong>Delta:</strong> ${signal.delta}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
             
             // NEW IN v9.0: Update 3X Predictions
             const predictionsContainer = document.getElementById('threex-predictions');
@@ -4054,7 +4248,8 @@ def api_dashboard():
             'stock_volume_spikes': stock_volume_spikes,
             'option_volume_spikes_oi_increasing': option_volume_spikes_oi_increasing,
             'option_volume_spikes_oi_decreasing': option_volume_spikes_oi_decreasing,
-            'combined_signals': combined_signals
+            'combined_signals': combined_signals,
+            'super_bot_signals': super_bot_signals
         },
         # NEW IN v9.0: 3X Predictions and Alerts
         'threex_predictions': threex_predictions,
